@@ -1,8 +1,11 @@
+"""Google Drive backup destination using OAuth2 user credentials."""
+
 from __future__ import annotations
 
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
 from app.core.context import BackupError, BackupResult
 from app.destinations.base import BackupDestination
@@ -16,17 +19,22 @@ _TOKENS_PATH = Path("/config/google-tokens.json")
 
 
 class GoogleDriveDestination(BackupDestination):
-    destination_type = "google_drive"
-    display_name = "Google Drive"
-    description = (
+    """Upload backup files to a Google Drive folder via OAuth2 credentials."""
+
+    destination_type: str = "google_drive"
+    display_name: str = "Google Drive"
+    description: str = (
         "Upload backup files to a Google Drive folder via OAuth2. "
         "Upload your client_secret.json then click Authorize in the UI."
     )
-    env_var_specs = [
+    env_var_specs: list[EnvVarSpec] = [
         EnvVarSpec(
             key="GOOGLE_DRIVE_ENABLED",
             label="Enable Google Drive",
-            description="Set to 'true' to upload backups to Google Drive after each successful run.",
+            description=(
+                "Set to 'true' to upload backups to Google Drive "
+                "after each successful run."
+            ),
             secret=False,
             required=False,
         ),
@@ -43,19 +51,21 @@ class GoogleDriveDestination(BackupDestination):
         self.credentials_file = credentials_file
         self.tokens_file = tokens_file
         self.folder_id = folder_id
-        self._service = None
+        self._service: Any = None
 
-    def _get_service(self):
+    def _get_service(self) -> Any:
         if self._service is not None:
             return self._service
 
         if not self.credentials_file.exists():
             raise BackupError(
-                "Google client credentials not found. Upload client_secret.json in the Destinations panel."
+                "Google client credentials not found. "
+                "Upload client_secret.json in the Destinations panel."
             )
         if not self.tokens_file.exists():
             raise BackupError(
-                "Google Drive not authorized. Click 'Authorize Google Drive' in the Destinations panel."
+                "Google Drive not authorized. "
+                "Click 'Authorize Google Drive' in the Destinations panel."
             )
 
         from google.auth.transport.requests import Request
@@ -81,7 +91,7 @@ class GoogleDriveDestination(BackupDestination):
         self._service = build("drive", "v3", credentials=creds)
         return self._service
 
-    def _get_or_create_folder(self, service, name: str, parent_id: str) -> str:
+    def _get_or_create_folder(self, service: Any, name: str, parent_id: str) -> str:
         q = (
             f"name='{name}' and '{parent_id}' in parents "
             f"and mimeType='application/vnd.google-apps.folder' and trashed=false"
@@ -93,7 +103,11 @@ class GoogleDriveDestination(BackupDestination):
         folder = (
             service.files()
             .create(
-                body={"name": name, "mimeType": "application/vnd.google-apps.folder", "parents": [parent_id]},
+                body={
+                    "name": name,
+                    "mimeType": "application/vnd.google-apps.folder",
+                    "parents": [parent_id],
+                },
                 fields="id",
             )
             .execute()
@@ -101,13 +115,16 @@ class GoogleDriveDestination(BackupDestination):
         return folder["id"]
 
     def upload(self, file_path: Path, result: BackupResult) -> None:
+        """Upload a file into a per-service subfolder of the configured folder."""
         from googleapiclient.http import MediaFileUpload
 
         if not file_path.exists():
             raise BackupError(f"File to upload does not exist: {file_path}")
 
         service = self._get_service()
-        subfolder_id = self._get_or_create_folder(service, result.service_name, self.folder_id)
+        subfolder_id = self._get_or_create_folder(
+            service, result.service_name, self.folder_id
+        )
         file_metadata = {"name": file_path.name, "parents": [subfolder_id]}
         media = MediaFileUpload(str(file_path), resumable=True)
         uploaded = (
@@ -125,8 +142,13 @@ ALL_DESTINATIONS: list[type[GoogleDriveDestination]] = [GoogleDriveDestination]
 
 
 def create_google_drive_destination(
-    config: dict, context_env: dict
+    config: dict, context_env: dict[str, str]
 ) -> GoogleDriveDestination | None:
+    """Build a Google Drive destination if enabled, else return ``None``.
+
+    The env var ``GOOGLE_DRIVE_ENABLED`` takes precedence over the config file;
+    raises ``BackupError`` if enabled but the target folder ID is missing.
+    """
     enabled_env = context_env.get("GOOGLE_DRIVE_ENABLED", "").strip().lower()
     if enabled_env == "true":
         enabled = True

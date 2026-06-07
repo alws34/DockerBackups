@@ -1,3 +1,5 @@
+"""Worker exporting Snipe-IT assets and configuration via its REST API."""
+
 from __future__ import annotations
 
 import json
@@ -35,10 +37,14 @@ _PAGE_SIZE = 500
 
 
 class SnipeItWorker(BackupWorker):
-    worker_type = "snipeit"
-    display_name = "Snipe-IT"
-    description = "Full export of assets, licenses, and configuration via Snipe-IT REST API."
-    env_var_specs = [
+    """Export assets, licenses, and configuration via the Snipe-IT REST API."""
+
+    worker_type: str = "snipeit"
+    display_name: str = "Snipe-IT"
+    description: str = (
+        "Full export of assets, licenses, and configuration via Snipe-IT REST API."
+    )
+    env_var_specs: list[EnvVarSpec] = [
         EnvVarSpec(
             key="SNIPEIT_URL",
             label="Snipe-IT URL",
@@ -56,6 +62,7 @@ class SnipeItWorker(BackupWorker):
     ]
 
     def run(self, context: BackupContext) -> BackupResult:
+        """Page through each endpoint, write JSON files, and archive them."""
         started_at = datetime.now()
 
         base_url = context.env.get("SNIPEIT_URL", "").rstrip("/")
@@ -74,7 +81,7 @@ class SnipeItWorker(BackupWorker):
         }
 
         def fetch_all(endpoint: str) -> list:
-            records = []
+            records: list = []
             offset = 0
             while True:
                 resp = requests.get(
@@ -86,8 +93,13 @@ class SnipeItWorker(BackupWorker):
                 resp.raise_for_status()
                 data = resp.json()
                 if offset == 0:
-                    logger.info(f"snipeit: {endpoint} response keys: {list(data.keys()) if isinstance(data, dict) else type(data).__name__}")
-                # Snipe-IT uses "rows" at the top level
+                    keys = (
+                        list(data.keys())
+                        if isinstance(data, dict)
+                        else type(data).__name__
+                    )
+                    logger.info(f"snipeit: {endpoint} response keys: {keys}")
+                # Snipe-IT uses "rows" at the top level.
                 if isinstance(data, list):
                     return data
                 rows = data.get("rows") or data.get("data") or []
@@ -114,7 +126,9 @@ class SnipeItWorker(BackupWorker):
                     total_records += len(records)
                 except requests.HTTPError as e:
                     if e.response is not None and e.response.status_code == 401:
-                        raise BackupError("SNIPEIT_API_KEY is invalid or expired (401 Unauthorized)") from e
+                        raise BackupError(
+                            "SNIPEIT_API_KEY is invalid or expired (401 Unauthorized)"
+                        ) from e
                     logger.warning(f"snipeit: skipping {endpoint}: {e}")
                     (work / f"{endpoint}.json").write_text("[]")
                 except requests.RequestException as e:
@@ -132,7 +146,10 @@ class SnipeItWorker(BackupWorker):
             service_name=self.service_name,
             worker_type=self.worker_type,
             success=True,
-            message=f"{total_records} records exported: {archive.name} ({archive.stat().st_size} bytes)",
+            message=(
+                f"{total_records} records exported: {archive.name} "
+                f"({archive.stat().st_size} bytes)"
+            ),
             output_files=[archive],
             started_at=started_at,
             finished_at=datetime.now(),

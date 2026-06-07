@@ -1,11 +1,17 @@
-import os
-import pytest
+"""Tests for the BackupContext, BackupResult, and BackupError types."""
+
+from __future__ import annotations
+
 from datetime import datetime
 from pathlib import Path
-from app.core.context import BackupContext, BackupResult, BackupError
+
+import pytest
+
+from app.core.context import BackupContext, BackupError, BackupResult
 
 
-def test_backup_context_from_environment(monkeypatch):
+def test_backup_context_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Environment variables should populate the corresponding context paths."""
     monkeypatch.setenv("BACKUP_ROOT", "/tmp/backups")
     monkeypatch.setenv("LOG_ROOT", "/tmp/logs")
     monkeypatch.setenv("STATE_ROOT", "/tmp/state")
@@ -17,7 +23,8 @@ def test_backup_context_from_environment(monkeypatch):
     assert "BACKUP_ROOT" in ctx.env
 
 
-def test_backup_context_defaults(monkeypatch):
+def test_backup_context_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unset environment variables should fall back to the default paths."""
     monkeypatch.delenv("BACKUP_ROOT", raising=False)
     monkeypatch.delenv("LOG_ROOT", raising=False)
     monkeypatch.delenv("STATE_ROOT", raising=False)
@@ -27,7 +34,8 @@ def test_backup_context_defaults(monkeypatch):
     assert ctx.state_root == Path("/state")
 
 
-def test_backup_result_fields():
+def test_backup_result_fields() -> None:
+    """A BackupResult should retain the fields it was constructed with."""
     now = datetime.now()
     result = BackupResult(
         service_name="test",
@@ -42,7 +50,8 @@ def test_backup_result_fields():
     assert result.service_name == "test"
 
 
-def test_backup_error_is_exception():
+def test_backup_error_is_exception() -> None:
+    """BackupError should behave like a standard exception."""
     err = BackupError("something went wrong")
     assert isinstance(err, Exception)
     assert str(err) == "something went wrong"

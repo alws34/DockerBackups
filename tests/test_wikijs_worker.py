@@ -1,7 +1,13 @@
-import pytest
+"""Tests for the Wiki.js GraphQL export worker."""
+
+from __future__ import annotations
+
 import tarfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
+
 from app.core.context import BackupContext, BackupError
 from app.workers.wikijs import WikiJsWorker
 
@@ -19,7 +25,15 @@ ENV = {
     "WIKIJS_API_TOKEN": "test-token-abc",
 }
 
-MOCK_PAGES = [{"id": 1, "title": "Home", "path": "en/home", "updatedAt": "2024-01-01", "isPublished": True}]
+MOCK_PAGES = [
+    {
+        "id": 1,
+        "title": "Home",
+        "path": "en/home",
+        "updatedAt": "2024-01-01",
+        "isPublished": True,
+    }
+]
 MOCK_PAGE_CONTENT = {
     "id": 1,
     "title": "Home",
@@ -31,7 +45,8 @@ MOCK_PAGE_CONTENT = {
 
 
 @pytest.fixture
-def context(tmp_path):
+def context(tmp_path: Path) -> BackupContext:
+    """Return a context pointing at temporary paths with valid Wiki.js env vars."""
     return BackupContext(
         backup_root=tmp_path / "backups",
         log_root=tmp_path / "logs",
@@ -41,11 +56,13 @@ def context(tmp_path):
     )
 
 
-def test_worker_type():
+def test_worker_type() -> None:
+    """The worker should report its registered type string."""
     assert WikiJsWorker.worker_type == "wikijs"
 
 
-def test_missing_url_raises(tmp_path):
+def test_missing_url_raises(tmp_path: Path) -> None:
+    """A missing Wiki.js URL should raise BackupError."""
     ctx = BackupContext(
         backup_root=tmp_path / "backups",
         log_root=tmp_path / "logs",
@@ -58,23 +75,29 @@ def test_missing_url_raises(tmp_path):
         worker.run(ctx)
 
 
-def _make_list_response():
+def _make_list_response() -> MagicMock:
+    """Build a mock HTTP response for the page-list GraphQL query."""
     mock = MagicMock()
     mock.raise_for_status = MagicMock()
     mock.json.return_value = {"data": {"pages": {"list": MOCK_PAGES}}}
     return mock
 
 
-def _make_page_response():
+def _make_page_response() -> MagicMock:
+    """Build a mock HTTP response for the single-page GraphQL query."""
     mock = MagicMock()
     mock.raise_for_status = MagicMock()
     mock.json.return_value = {"data": {"pages": {"single": MOCK_PAGE_CONTENT}}}
     return mock
 
 
-def test_run_creates_tar_gz(context):
+def test_run_creates_tar_gz(context: BackupContext) -> None:
+    """A successful run should produce a tar.gz containing the exported page."""
     worker = WikiJsWorker(SERVICE_CONFIG)
-    with patch("app.workers.wikijs.requests.post", side_effect=[_make_list_response(), _make_page_response()]):
+    with patch(
+        "app.workers.wikijs.requests.post",
+        side_effect=[_make_list_response(), _make_page_response()],
+    ):
         result = worker.run(context)
 
     assert result.success is True
@@ -89,7 +112,8 @@ def test_run_creates_tar_gz(context):
         assert any("home.md" in n for n in names)
 
 
-def test_graphql_error_raises(context):
+def test_graphql_error_raises(context: BackupContext) -> None:
+    """A GraphQL error payload should raise BackupError."""
     worker = WikiJsWorker(SERVICE_CONFIG)
     mock = MagicMock()
     mock.raise_for_status = MagicMock()
@@ -99,7 +123,8 @@ def test_graphql_error_raises(context):
             worker.run(context)
 
 
-def test_env_var_specs_defined():
+def test_env_var_specs_defined() -> None:
+    """Both Wiki.js env vars should be declared, with the token marked secret."""
     specs = WikiJsWorker.env_var_specs
     keys = {s.key for s in specs}
     assert "WIKIJS_URL" in keys

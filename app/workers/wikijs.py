@@ -1,3 +1,5 @@
+"""Worker exporting all Wiki.js pages via GraphQL into a tar.gz archive."""
+
 from __future__ import annotations
 
 import logging
@@ -44,10 +46,12 @@ query ($id: Int!) {
 
 
 class WikiJsWorker(BackupWorker):
-    worker_type = "wikijs"
-    display_name = "Wiki.js"
-    description = "Export all pages via GraphQL API and archive as compressed tar."
-    env_var_specs = [
+    """Export every Wiki.js page via the GraphQL API into a compressed tar."""
+
+    worker_type: str = "wikijs"
+    display_name: str = "Wiki.js"
+    description: str = "Export all pages via GraphQL API and archive as compressed tar."
+    env_var_specs: list[EnvVarSpec] = [
         EnvVarSpec(
             key="WIKIJS_URL",
             option_key="wikijs_url_env",
@@ -67,6 +71,7 @@ class WikiJsWorker(BackupWorker):
     ]
 
     def run(self, context: BackupContext) -> BackupResult:
+        """List every page, fetch its content, and archive the export as tar.gz."""
         started_at = datetime.now()
         wikijs_url = self.require_env_by_option(context, "wikijs_url_env").rstrip("/")
         api_token = self.require_env_by_option(context, "api_token_env")
@@ -115,7 +120,13 @@ class WikiJsWorker(BackupWorker):
         except Exception as e:
             raise BackupError(str(e)) from e
 
-    def _graphql(self, url: str, headers: dict, query: str, variables: dict | None = None) -> dict:
+    def _graphql(
+        self,
+        url: str,
+        headers: dict[str, str],
+        query: str,
+        variables: dict | None = None,
+    ) -> dict:
         payload: dict = {"query": query}
         if variables:
             payload["variables"] = variables
@@ -126,11 +137,11 @@ class WikiJsWorker(BackupWorker):
             raise BackupError(f"GraphQL error: {data['errors']}")
         return data
 
-    def _list_pages(self, url: str, headers: dict) -> list[dict]:
+    def _list_pages(self, url: str, headers: dict[str, str]) -> list[dict]:
         data = self._graphql(url, headers, _LIST_QUERY)
         return data["data"]["pages"]["list"]
 
-    def _fetch_page(self, url: str, headers: dict, page_id: int) -> dict:
+    def _fetch_page(self, url: str, headers: dict[str, str], page_id: int) -> dict:
         data = self._graphql(url, headers, _PAGE_QUERY, {"id": page_id})
         return data["data"]["pages"]["single"]
 

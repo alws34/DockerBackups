@@ -1,3 +1,5 @@
+"""FastAPI application factory wiring routers, static assets, and the index page."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -19,6 +21,7 @@ def create_app(
     registry: WorkerRegistry,
     env_manager: EnvManager,
 ) -> FastAPI:
+    """Create and configure the FastAPI app for the backup agent."""
     app = FastAPI(title="Service Backup Agent", version="1.0.0")
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -33,6 +36,7 @@ def create_app(
 
     @app.get("/")
     async def index() -> FileResponse:
+        """Serve the single-page web UI."""
         return FileResponse(str(STATIC_DIR / "index.html"))
 
     return app

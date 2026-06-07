@@ -1,3 +1,5 @@
+"""Core data structures shared across workers: context, result, and errors."""
+
 from __future__ import annotations
 
 import os
@@ -7,11 +9,13 @@ from pathlib import Path
 
 
 class BackupError(Exception):
-    pass
+    """Raised for any expected, recoverable failure during a backup run."""
 
 
 @dataclass
 class BackupContext:
+    """Runtime paths, retention policy, and environment for a backup run."""
+
     backup_root: Path
     log_root: Path
     state_root: Path
@@ -20,6 +24,7 @@ class BackupContext:
 
     @classmethod
     def from_environment(cls, retention_days: int) -> BackupContext:
+        """Build a context from environment variables, falling back to defaults."""
         return cls(
             backup_root=Path(os.environ.get("BACKUP_ROOT", "/backups")),
             log_root=Path(os.environ.get("LOG_ROOT", "/logs")),
@@ -31,6 +36,8 @@ class BackupContext:
 
 @dataclass
 class BackupResult:
+    """Outcome of a single backup run, including produced files and timing."""
+
     service_name: str
     worker_type: str
     success: bool

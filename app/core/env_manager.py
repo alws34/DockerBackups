@@ -1,3 +1,5 @@
+"""Thread-safe reader and writer for a ``.env``-style key/value file."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -5,11 +7,14 @@ from threading import Lock
 
 
 class EnvManager:
+    """Read and update a ``.env`` file while preserving comments and layout."""
+
     def __init__(self, env_file: Path) -> None:
         self.env_file = env_file
         self._lock = Lock()
 
     def read(self) -> dict[str, str]:
+        """Parse the env file into a dict, ignoring blanks and comment lines."""
         if not self.env_file.exists():
             return {}
         result: dict[str, str] = {}
@@ -23,6 +28,7 @@ class EnvManager:
         return result
 
     def update(self, updates: dict[str, str]) -> None:
+        """Apply key/value updates, rewriting existing keys and appending new ones."""
         with self._lock:
             existing_lines = (
                 self.env_file.read_text().splitlines()

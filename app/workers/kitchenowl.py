@@ -1,3 +1,5 @@
+"""Worker exporting KitchenOwl households and recipes via its API."""
+
 from __future__ import annotations
 
 import json
@@ -16,10 +18,15 @@ logger = logging.getLogger(__name__)
 
 
 class KitchenOwlWorker(BackupWorker):
-    worker_type = "kitchenowl"
-    display_name = "KitchenOwl"
-    description = "Exports recipes and household data via KitchenOwl API using a long-lived token."
-    env_var_specs = [
+    """Export recipes and household data via the KitchenOwl API."""
+
+    worker_type: str = "kitchenowl"
+    display_name: str = "KitchenOwl"
+    description: str = (
+        "Exports recipes and household data via KitchenOwl API "
+        "using a long-lived token."
+    )
+    env_var_specs: list[EnvVarSpec] = [
         EnvVarSpec(
             key="KITCHENOWL_URL",
             label="KitchenOwl URL",
@@ -40,6 +47,7 @@ class KitchenOwlWorker(BackupWorker):
     ]
 
     def run(self, context: BackupContext) -> BackupResult:
+        """Export every household's recipes, items, and lists into a tar.gz."""
         started_at = datetime.now()
 
         base_url = context.env.get("KITCHENOWL_URL", "").rstrip("/")
@@ -71,7 +79,9 @@ class KitchenOwlWorker(BackupWorker):
             if not isinstance(households, list):
                 households = [households]
 
-            (work / "households.json").write_text(json.dumps(households, indent=2, ensure_ascii=False))
+            (work / "households.json").write_text(
+                json.dumps(households, indent=2, ensure_ascii=False)
+            )
 
             for hh in households:
                 hh_id = hh.get("household", {}).get("id") or hh.get("id")
@@ -83,25 +93,38 @@ class KitchenOwlWorker(BackupWorker):
                 # Recipes
                 try:
                     recipes = get(f"/api/household/{hh_id}/recipe")
-                    (hh_dir / "recipes.json").write_text(json.dumps(recipes, indent=2, ensure_ascii=False))
+                    (hh_dir / "recipes.json").write_text(
+                        json.dumps(recipes, indent=2, ensure_ascii=False)
+                    )
                     count = len(recipes) if isinstance(recipes, list) else "?"
                     logger.info(f"kitchenowl: household {hh_id}: {count} recipes")
                 except requests.RequestException as e:
-                    logger.warning(f"kitchenowl: could not fetch recipes for household {hh_id}: {e}")
+                    logger.warning(
+                        f"kitchenowl: could not fetch recipes for household {hh_id}: {e}"
+                    )
 
                 # Items / ingredients catalogue
                 try:
                     items = get(f"/api/household/{hh_id}/item")
-                    (hh_dir / "items.json").write_text(json.dumps(items, indent=2, ensure_ascii=False))
+                    (hh_dir / "items.json").write_text(
+                        json.dumps(items, indent=2, ensure_ascii=False)
+                    )
                 except requests.RequestException as e:
-                    logger.warning(f"kitchenowl: could not fetch items for household {hh_id}: {e}")
+                    logger.warning(
+                        f"kitchenowl: could not fetch items for household {hh_id}: {e}"
+                    )
 
                 # Shopping lists
                 try:
                     shopping = get(f"/api/household/{hh_id}/shoppinglist")
-                    (hh_dir / "shoppinglists.json").write_text(json.dumps(shopping, indent=2, ensure_ascii=False))
+                    (hh_dir / "shoppinglists.json").write_text(
+                        json.dumps(shopping, indent=2, ensure_ascii=False)
+                    )
                 except requests.RequestException as e:
-                    logger.warning(f"kitchenowl: could not fetch shoppinglists for household {hh_id}: {e}")
+                    logger.warning(
+                        f"kitchenowl: could not fetch shoppinglists "
+                        f"for household {hh_id}: {e}"
+                    )
 
             archive = backup_dir / f"kitchenowl_{timestamp}.tar.gz"
             with tarfile.open(archive, "w:gz") as tar:

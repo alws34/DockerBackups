@@ -1,3 +1,5 @@
+"""Scheduler that runs backup workers on a timer and persists their results."""
+
 from __future__ import annotations
 
 import asyncio
@@ -17,7 +19,14 @@ logger = logging.getLogger(__name__)
 
 
 class BackupScheduler:
-    def __init__(self, config_file: str, registry: WorkerRegistry, env_manager: EnvManager | None = None) -> None:
+    """Loads service config, runs workers on schedule, and tracks their state."""
+
+    def __init__(
+        self,
+        config_file: str,
+        registry: WorkerRegistry,
+        env_manager: EnvManager | None = None,
+    ) -> None:
         self.config_file = config_file
         self.registry = registry
         self.env_manager = env_manager
@@ -25,13 +34,16 @@ class BackupScheduler:
         self._running: dict[str, bool] = {}
 
     def load_config(self) -> None:
+        """Load the JSON service configuration from disk into memory."""
         with open(self.config_file) as f:
             self._config = json.load(f)
 
     def get_config(self) -> dict[str, Any]:
+        """Return the in-memory service configuration."""
         return self._config
 
     def get_settings(self) -> dict:
+        """Return schedule and retention settings, applying defaults."""
         return {
             "daily_at": self._config.get("schedule", {}).get("daily_at", "03:30"),
             "interval_hours": self._config.get("schedule", {}).get("interval_hours", 0),
@@ -39,7 +51,14 @@ class BackupScheduler:
             "keep_days": self._config.get("retention", {}).get("keep_days", 30),
         }
 
-    def update_settings(self, daily_at: str, interval_hours: int, run_on_start: bool, keep_days: int) -> None:
+    def update_settings(
+        self,
+        daily_at: str,
+        interval_hours: int,
+        run_on_start: bool,
+        keep_days: int,
+    ) -> None:
+        """Update schedule and retention settings and persist them to disk."""
         self._config.setdefault("schedule", {})["daily_at"] = daily_at
         self._config.setdefault("schedule", {})["interval_hours"] = interval_hours
         self._config.setdefault("schedule", {})["run_on_start"] = run_on_start
@@ -49,6 +68,7 @@ class BackupScheduler:
             f.write("\n")
 
     def set_enabled(self, service_name: str, enabled: bool) -> None:
+        """Toggle a service's enabled flag and persist the change to disk."""
         services = self._config.get("services", [])
         svc = next((s for s in services if s["name"] == service_name), None)
         if svc is None:
@@ -59,9 +79,11 @@ class BackupScheduler:
             f.write("\n")
 
     def is_running(self, service_name: str) -> bool:
+        """Return whether a backup for the named service is in progress."""
         return self._running.get(service_name, False)
 
     def get_state(self, service_name: str) -> dict | None:
+        """Return the last persisted result for a service, or ``None``."""
         state_file = (
             Path(os.environ.get("STATE_ROOT", "/state"))
             / service_name
@@ -70,11 +92,12 @@ class BackupScheduler:
         if state_file.exists():
             try:
                 return json.loads(state_file.read_text())
-            except Exception:
+            except (json.JSONDecodeError, OSError):
                 return None
         return None
 
     async def run_forever(self) -> None:
+        """Run enabled services on the configured schedule, indefinitely."""
         self.load_config()
         if self._config.get("schedule", {}).get("run_on_start", False):
             await self._run_all_services()
@@ -94,6 +117,11 @@ class BackupScheduler:
         await asyncio.gather(*tasks, return_exceptions=True)
 
     async def run_service(self, service_config: dict) -> BackupResult | None:
+        """Run one service's worker in a thread, persisting and uploading results.
+
+        Returns the ``BackupResult`` on success, or ``None`` if the service was
+        already running or the run raised an error (which is logged and recorded).
+        """
         name = service_config["name"]
         if self._running.get(name):
             logger.warning(f"[{name}] Already running, skipping")
@@ -134,11 +162,14 @@ class BackupScheduler:
             try:
                 destination.upload(file_path, result)
             except Exception as e:
-                logger.error(f"[{result.service_name}] Google Drive upload failed for {file_path.name}: {e}")
+                logger.error(
+                    f"[{result.service_name}] Google Drive upload failed "
+                    f"for {file_path.name}: {e}"
+                )
 
     def _make_context(self) -> BackupContext:
         retention = self._config.get("retention", {}).get("keep_days", 30)
-        # Merge os.environ with live .env file so changes take effect without container restart
+        # Merge os.environ with the live .env file so edits take effect without a restart.
         env = dict(os.environ)
         if self.env_manager:
             env.update(self.env_manager.read())

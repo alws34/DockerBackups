@@ -1,3 +1,5 @@
+"""Routes for managing backup destinations and the Google Drive OAuth2 flow."""
+
 from __future__ import annotations
 
 import base64
@@ -17,24 +19,30 @@ from app.core.env_manager import EnvManager
 from app.destinations.google_drive import ALL_DESTINATIONS, _CREDS_PATH, _TOKENS_PATH
 
 # In-memory store: state -> {redirect_uri, code_verifier}
-_pending_oauth: dict[str, dict] = {}
+_pending_oauth: dict[str, dict[str, str]] = {}
 
 _SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
 
 class DestinationEnvVarUpdate(BaseModel):
+    """Request body carrying environment variable updates for a destination."""
+
     updates: dict[str, str]
 
 
 class CredentialsPayload(BaseModel):
+    """Request body wrapping the raw OAuth2 client secret JSON."""
+
     json_content: str
 
 
 def create_router(env_manager: EnvManager) -> APIRouter:
+    """Return a router exposing destination configuration and OAuth2 endpoints."""
     router = APIRouter()
 
     @router.get("/destinations")
     async def list_destinations() -> list[dict[str, Any]]:
+        """List configured destinations with their env var and auth status."""
         env_values = env_manager.read()
         result = []
         for dest_class in ALL_DESTINATIONS:
@@ -72,11 +80,14 @@ def create_router(env_manager: EnvManager) -> APIRouter:
     async def update_destination_env_vars(
         dest_type: str, body: DestinationEnvVarUpdate
     ) -> dict:
+        """Persist env var updates for a destination after validating the keys."""
         dest_class = next(
             (d for d in ALL_DESTINATIONS if d.destination_type == dest_type), None
         )
-        if not dest_class:
-            raise HTTPException(status_code=404, detail=f"Unknown destination type '{dest_type}'")
+        if dest_class is None:
+            raise HTTPException(
+                status_code=404, detail=f"Unknown destination type '{dest_type}'"
+            )
         allowed_keys = {spec.key for spec in dest_class.env_var_specs}
         bad_keys = set(body.updates) - allowed_keys
         if bad_keys:
@@ -89,10 +100,11 @@ def create_router(env_manager: EnvManager) -> APIRouter:
 
     @router.post("/destinations/google_drive/credentials")
     async def upload_credentials(body: CredentialsPayload) -> dict:
+        """Validate and store the uploaded Google OAuth2 client secret JSON."""
         try:
             parsed = json.loads(body.json_content)
         except json.JSONDecodeError as e:
-            raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+            raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}") from e
 
         client_info = parsed.get("web") or parsed.get("installed")
         if not client_info:
@@ -119,6 +131,7 @@ def create_router(env_manager: EnvManager) -> APIRouter:
 
     @router.post("/destinations/google_drive/oauth/start")
     async def oauth_start(request: Request, body: dict) -> dict:
+        """Build a Google OAuth2 authorization URL using PKCE and return it."""
         creds_path = Path(os.environ.get("GOOGLE_CREDENTIALS_FILE", str(_CREDS_PATH)))
         if not creds_path.exists() or not creds_path.is_file():
             raise HTTPException(status_code=400, detail="Upload client_secret.json first")
@@ -144,13 +157,19 @@ def create_router(env_manager: EnvManager) -> APIRouter:
                 code_challenge_method="S256",
             )
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to build auth URL: {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Failed to build auth URL: {e}"
+            ) from e
 
-        _pending_oauth[state] = {"redirect_uri": redirect_uri, "code_verifier": code_verifier}
+        _pending_oauth[state] = {
+            "redirect_uri": redirect_uri,
+            "code_verifier": code_verifier,
+        }
         return {"auth_url": auth_url}
 
     @router.get("/destinations/google_drive/oauth/callback")
     async def oauth_callback(code: str, state: str) -> HTMLResponse:
+        """Exchange the OAuth2 authorization code for tokens and store them."""
         pending = _pending_oauth.pop(state, None)
         if not pending:
             redirect_uri = None
@@ -200,6 +219,7 @@ def create_router(env_manager: EnvManager) -> APIRouter:
 
     @router.delete("/destinations/google_drive/oauth")
     async def oauth_revoke() -> dict:
+        """Delete the stored Google Drive tokens, revoking authorization."""
         tokens_path = Path(os.environ.get("GOOGLE_TOKENS_FILE", str(_TOKENS_PATH)))
         if tokens_path.exists():
             tokens_path.unlink()

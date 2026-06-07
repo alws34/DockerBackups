@@ -1,15 +1,19 @@
+"""Routes for listing services, triggering backups, and toggling enablement."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
-
-class EnabledUpdate(BaseModel):
-    enabled: bool
-
 from app.core.env_manager import EnvManager
 from app.core.registry import WorkerRegistry
 from app.core.scheduler import BackupScheduler
+
+
+class EnabledUpdate(BaseModel):
+    """Request body toggling whether a service is enabled."""
+
+    enabled: bool
 
 
 def create_router(
@@ -17,10 +21,12 @@ def create_router(
     registry: WorkerRegistry,
     env_manager: EnvManager,
 ) -> APIRouter:
+    """Return a router exposing service listing, trigger, and toggle endpoints."""
     router = APIRouter()
 
     @router.get("/services")
     async def list_services() -> list[dict]:
+        """Return all configured services with state and env var metadata."""
         config = scheduler.get_config()
         env_values = env_manager.read()
         result = []
@@ -47,7 +53,9 @@ def create_router(
                     "name": svc["name"],
                     "type": svc["type"],
                     "enabled": svc.get("enabled", False),
-                    "display_name": worker_class.display_name if worker_class else svc["type"],
+                    "display_name": (
+                        worker_class.display_name if worker_class else svc["type"]
+                    ),
                     "description": worker_class.description if worker_class else "",
                     "is_running": scheduler.is_running(svc["name"]),
                     "last_result": state,
@@ -58,6 +66,7 @@ def create_router(
 
     @router.post("/services/{name}/trigger")
     async def trigger_service(name: str, background_tasks: BackgroundTasks) -> dict:
+        """Schedule a single named service to run in the background."""
         config = scheduler.get_config()
         svc = next((s for s in config.get("services", []) if s["name"] == name), None)
         if not svc:
@@ -69,6 +78,7 @@ def create_router(
 
     @router.post("/services/trigger-all")
     async def trigger_all_services(background_tasks: BackgroundTasks) -> dict:
+        """Schedule every enabled, idle service to run in the background."""
         config = scheduler.get_config()
         triggered = []
         skipped = []
@@ -85,13 +95,14 @@ def create_router(
 
     @router.put("/services/{name}/enabled")
     async def set_service_enabled(name: str, body: EnabledUpdate) -> dict:
+        """Enable or disable a service and persist the change to config."""
         config = scheduler.get_config()
         if not any(s["name"] == name for s in config.get("services", [])):
             raise HTTPException(status_code=404, detail=f"Service '{name}' not found")
         try:
             scheduler.set_enabled(name, body.enabled)
         except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail=str(e)) from e
         return {"status": "ok", "service": name, "enabled": body.enabled}
 
     return router

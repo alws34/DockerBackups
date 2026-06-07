@@ -1,3 +1,5 @@
+"""Worker producing an encrypted JSON vault export via the Bitwarden CLI."""
+
 from __future__ import annotations
 
 import logging
@@ -12,10 +14,12 @@ logger = logging.getLogger(__name__)
 
 
 class VaultwardenEncryptedJsonWorker(BackupWorker):
-    worker_type = "vaultwarden_encrypted_json"
-    display_name = "Vaultwarden (Encrypted JSON)"
-    description = "Daily encrypted JSON vault export using the Bitwarden CLI."
-    env_var_specs = [
+    """Produce an encrypted JSON vault export using the ``bw`` Bitwarden CLI."""
+
+    worker_type: str = "vaultwarden_encrypted_json"
+    display_name: str = "Vaultwarden (Encrypted JSON)"
+    description: str = "Daily encrypted JSON vault export using the Bitwarden CLI."
+    env_var_specs: list[EnvVarSpec] = [
         EnvVarSpec(
             key="VAULTWARDEN_URL",
             option_key="vaultwarden_url_env",
@@ -52,13 +56,21 @@ class VaultwardenEncryptedJsonWorker(BackupWorker):
             key="VAULTWARDEN_EXPORT_PASSWORD",
             option_key="export_password_env",
             label="Export Encryption Password",
-            description="Password used to encrypt the exported JSON backup. Must differ from master password.",
+            description=(
+                "Password used to encrypt the exported JSON backup. "
+                "Must differ from master password."
+            ),
             secret=True,
             required=True,
         ),
     ]
 
     def run(self, context: BackupContext) -> BackupResult:
+        """Log in via API key, unlock, sync, and write an encrypted JSON export.
+
+        The vault is always locked and logged out in a ``finally`` block so no
+        unlocked session is left behind, even on failure.
+        """
         started_at = datetime.now()
         bw = self.require_binary("bw")
 
@@ -128,7 +140,11 @@ class VaultwardenEncryptedJsonWorker(BackupWorker):
             output_file.chmod(0o600)
             logger.info(f"Backup written: {output_file} ({output_file.stat().st_size} bytes)")
 
-            self.cleanup_old_files(backup_dir, "vaultwarden_encrypted_json_*.json", context.retention_days)
+            self.cleanup_old_files(
+                backup_dir,
+                "vaultwarden_encrypted_json_*.json",
+                context.retention_days,
+            )
 
             return BackupResult(
                 service_name=self.service_name,

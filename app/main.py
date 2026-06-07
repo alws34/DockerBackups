@@ -1,3 +1,5 @@
+"""Application entrypoint that wires together the scheduler and web API."""
+
 from __future__ import annotations
 
 import asyncio
@@ -24,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 async def main() -> None:
+    """Build the scheduler and web server, then run both until interrupted."""
     config_file = os.environ.get("CONFIG_FILE", "/config/services.json")
     env_file_path = os.environ.get("ENV_FILE", "")
 
@@ -54,9 +57,7 @@ async def main() -> None:
     )
     server = uvicorn.Server(uvicorn_config)
 
-    logger.info(
-        f"Starting backup agent | config={config_file} | web=http://0.0.0.0:{port}"
-    )
+    logger.info(f"Starting backup agent | config={config_file} | web=http://0.0.0.0:{port}")
 
     await asyncio.gather(
         scheduler.run_forever(),

@@ -1,3 +1,5 @@
+"""Worker exporting Bar Assistant data via its REST API into a tar.gz archive."""
+
 from __future__ import annotations
 
 import json
@@ -32,10 +34,15 @@ _GLOBAL_ENDPOINTS = [
 
 
 class BarAssistantWorker(BackupWorker):
-    worker_type = "bar_assistant"
-    display_name = "Bar Assistant"
-    description = "Exports cocktails, ingredients, glasses, tags and more via Bar Assistant REST API."
-    env_var_specs = [
+    """Export cocktails, ingredients, glasses, and more via the Bar Assistant API."""
+
+    worker_type: str = "bar_assistant"
+    display_name: str = "Bar Assistant"
+    description: str = (
+        "Exports cocktails, ingredients, glasses, tags and more "
+        "via Bar Assistant REST API."
+    )
+    env_var_specs: list[EnvVarSpec] = [
         EnvVarSpec(
             key="BAR_ASSISTANT_URL",
             label="Bar Assistant URL",
@@ -57,6 +64,7 @@ class BarAssistantWorker(BackupWorker):
     ]
 
     def run(self, context: BackupContext) -> BackupResult:
+        """Export each bar's data to JSON and bundle it into a tar.gz archive."""
         started_at = datetime.now()
 
         base_url = context.env.get("BAR_ASSISTANT_URL", "").rstrip("/")
@@ -71,7 +79,11 @@ class BarAssistantWorker(BackupWorker):
             "Accept": "application/json",
         }
 
-        def get(path: str, params: dict | None = None, extra_headers: dict | None = None) -> dict | list:
+        def get(
+            path: str,
+            params: dict | None = None,
+            extra_headers: dict | None = None,
+        ) -> dict | list:
             url = f"{base_url}/api/{path}"
             h = {**headers, **(extra_headers or {})}
             resp = requests.get(url, headers=h, params=params or {}, timeout=60)
@@ -80,8 +92,11 @@ class BarAssistantWorker(BackupWorker):
             resp.raise_for_status()
             try:
                 return resp.json()
-            except Exception as e:
-                raise BackupError(f"Non-JSON response from {url} (status {resp.status_code}): {resp.text[:300]!r}") from e
+            except ValueError as e:
+                raise BackupError(
+                    f"Non-JSON response from {url} (status {resp.status_code}): "
+                    f"{resp.text[:300]!r}"
+                ) from e
 
         # Fetch bars to get bar ID(s)
         try:
@@ -135,7 +150,10 @@ class BarAssistantWorker(BackupWorker):
             service_name=self.service_name,
             worker_type=self.worker_type,
             success=True,
-            message=f"{total_records} records exported: {archive.name} ({archive.stat().st_size} bytes)",
+            message=(
+                f"{total_records} records exported: {archive.name} "
+                f"({archive.stat().st_size} bytes)"
+            ),
             output_files=[archive],
             started_at=started_at,
             finished_at=datetime.now(),

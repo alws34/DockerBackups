@@ -1,10 +1,14 @@
-import pytest
+"""Tests for the Vaultwarden encrypted JSON export worker."""
+
+from __future__ import annotations
+
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-from datetime import datetime
+from unittest.mock import patch
+
+import pytest
+
 from app.core.context import BackupContext, BackupError
 from app.workers.vaultwarden_encrypted_json import VaultwardenEncryptedJsonWorker
-
 
 SERVICE_CONFIG = {
     "name": "vaultwarden",
@@ -30,12 +34,14 @@ ENV = {
 }
 
 
-def test_worker_type():
+def test_worker_type() -> None:
+    """The worker should report its registered type string."""
     worker = VaultwardenEncryptedJsonWorker(SERVICE_CONFIG)
     assert worker.worker_type == "vaultwarden_encrypted_json"
 
 
-def test_env_var_specs_defined():
+def test_env_var_specs_defined() -> None:
+    """All required Vaultwarden env vars should be declared in the specs."""
     specs = VaultwardenEncryptedJsonWorker.env_var_specs
     keys = {s.key for s in specs}
     assert "VAULTWARDEN_URL" in keys
@@ -45,7 +51,8 @@ def test_env_var_specs_defined():
     assert "VAULTWARDEN_EXPORT_PASSWORD" in keys
 
 
-def test_missing_env_raises(tmp_path):
+def test_missing_env_raises(tmp_path: Path) -> None:
+    """A missing required env var should raise BackupError naming the var."""
     ctx = BackupContext(
         backup_root=tmp_path / "backups",
         log_root=tmp_path / "logs",
@@ -59,7 +66,8 @@ def test_missing_env_raises(tmp_path):
             worker.run(ctx)
 
 
-def test_missing_binary_raises(tmp_path):
+def test_missing_binary_raises(tmp_path: Path) -> None:
+    """A missing bw binary should raise BackupError mentioning it."""
     ctx = BackupContext(
         backup_root=tmp_path / "backups",
         log_root=tmp_path / "logs",
@@ -73,9 +81,10 @@ def test_missing_binary_raises(tmp_path):
             worker.run(ctx)
 
 
-def test_secrets_not_in_env_var_labels():
+def test_secrets_not_in_env_var_labels() -> None:
+    """Exactly the three sensitive vars should be marked as secret."""
     specs = VaultwardenEncryptedJsonWorker.env_var_specs
     secret_specs = [s for s in specs if s.secret]
-    assert len(secret_specs) == 3  # clientsecret, password, export password
+    assert len(secret_specs) == 3  # client secret, master password, export password
     for s in secret_specs:
         assert s.key in {"BW_CLIENTSECRET", "BW_PASSWORD", "VAULTWARDEN_EXPORT_PASSWORD"}
