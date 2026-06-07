@@ -81,6 +81,25 @@ class GoogleDriveDestination(BackupDestination):
         self._service = build("drive", "v3", credentials=creds)
         return self._service
 
+    def _get_or_create_folder(self, service, name: str, parent_id: str) -> str:
+        q = (
+            f"name='{name}' and '{parent_id}' in parents "
+            f"and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        )
+        results = service.files().list(q=q, fields="files(id)").execute()
+        files = results.get("files", [])
+        if files:
+            return files[0]["id"]
+        folder = (
+            service.files()
+            .create(
+                body={"name": name, "mimeType": "application/vnd.google-apps.folder", "parents": [parent_id]},
+                fields="id",
+            )
+            .execute()
+        )
+        return folder["id"]
+
     def upload(self, file_path: Path, result: BackupResult) -> None:
         from googleapiclient.http import MediaFileUpload
 
@@ -88,7 +107,8 @@ class GoogleDriveDestination(BackupDestination):
             raise BackupError(f"File to upload does not exist: {file_path}")
 
         service = self._get_service()
-        file_metadata = {"name": file_path.name, "parents": [self.folder_id]}
+        subfolder_id = self._get_or_create_folder(service, result.service_name, self.folder_id)
+        file_metadata = {"name": file_path.name, "parents": [subfolder_id]}
         media = MediaFileUpload(str(file_path), resumable=True)
         uploaded = (
             service.files()
