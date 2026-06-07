@@ -140,7 +140,6 @@ def create_router(env_manager: EnvManager) -> APIRouter:
             auth_url, state = flow.authorization_url(
                 access_type="offline",
                 prompt="consent",
-                include_granted_scopes="true",
                 code_challenge=code_challenge,
                 code_challenge_method="S256",
             )
