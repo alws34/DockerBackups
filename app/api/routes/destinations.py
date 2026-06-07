@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
+import secrets
 import shutil
 from pathlib import Path
 from typing import Any
@@ -13,8 +16,8 @@ from pydantic import BaseModel
 from app.core.env_manager import EnvManager
 from app.destinations.google_drive import ALL_DESTINATIONS, _CREDS_PATH, _TOKENS_PATH
 
-# In-memory store: state -> redirect_uri for ongoing OAuth flows
-_pending_oauth: dict[str, str] = {}
+# In-memory store: state -> {redirect_uri, code_verifier}
+_pending_oauth: dict[str, dict] = {}
 
 _SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
@@ -130,18 +133,30 @@ def create_router(env_manager: EnvManager) -> APIRouter:
             flow = Flow.from_client_secrets_file(
                 str(creds_path), scopes=_SCOPES, redirect_uri=redirect_uri
             )
+            code_verifier = secrets.token_urlsafe(48)
+            code_challenge = base64.urlsafe_b64encode(
+                hashlib.sha256(code_verifier.encode()).digest()
+            ).rstrip(b"=").decode()
             auth_url, state = flow.authorization_url(
-                access_type="offline", prompt="consent", include_granted_scopes="true"
+                access_type="offline",
+                prompt="consent",
+                include_granted_scopes="true",
+                code_challenge=code_challenge,
+                code_challenge_method="S256",
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to build auth URL: {e}")
 
-        _pending_oauth[state] = redirect_uri
+        _pending_oauth[state] = {"redirect_uri": redirect_uri, "code_verifier": code_verifier}
         return {"auth_url": auth_url}
 
     @router.get("/destinations/google_drive/oauth/callback")
     async def oauth_callback(code: str, state: str) -> HTMLResponse:
-        redirect_uri = _pending_oauth.pop(state, None)
+        pending = _pending_oauth.pop(state, None)
+        if not pending:
+            redirect_uri = None
+        else:
+            redirect_uri = pending["redirect_uri"]
         if not redirect_uri:
             return HTMLResponse(
                 "<html><body><h2>Error: unknown or expired OAuth state. "
@@ -157,7 +172,7 @@ def create_router(env_manager: EnvManager) -> APIRouter:
             flow = Flow.from_client_secrets_file(
                 str(creds_path), scopes=_SCOPES, redirect_uri=redirect_uri
             )
-            flow.fetch_token(code=code)
+            flow.fetch_token(code=code, code_verifier=pending["code_verifier"])
             creds = flow.credentials
         except Exception as e:
             return HTMLResponse(
