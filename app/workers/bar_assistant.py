@@ -8,6 +8,7 @@ import tarfile
 import tempfile
 from datetime import datetime
 from pathlib import Path
+from typing import ClassVar
 
 import requests
 
@@ -36,13 +37,13 @@ _GLOBAL_ENDPOINTS = [
 class BarAssistantWorker(BackupWorker):
     """Export cocktails, ingredients, glasses, and more via the Bar Assistant API."""
 
-    worker_type: str = "bar_assistant"
-    display_name: str = "Bar Assistant"
-    description: str = (
+    worker_type: ClassVar[str] = "bar_assistant"
+    display_name: ClassVar[str] = "Bar Assistant"
+    description: ClassVar[str] = (
         "Exports cocktails, ingredients, glasses, tags and more "
         "via Bar Assistant REST API."
     )
-    env_var_specs: list[EnvVarSpec] = [
+    env_var_specs: ClassVar[list[EnvVarSpec]] = [
         EnvVarSpec(
             key="BAR_ASSISTANT_URL",
             label="Bar Assistant URL",

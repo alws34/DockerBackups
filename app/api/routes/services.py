@@ -32,22 +32,14 @@ def create_router(
         result = []
         for svc in config.get("services", []):
             worker_class = registry.get_class(svc["type"])
-            state = scheduler.get_state(svc["name"])
-            env_var_info = []
-            if worker_class:
-                for spec in worker_class.env_var_specs:
-                    raw = env_values.get(spec.key, "")
-                    env_var_info.append(
-                        {
-                            "key": spec.key,
-                            "label": spec.label,
-                            "description": spec.description,
-                            "secret": spec.secret,
-                            "required": spec.required,
-                            "configured": bool(raw),
-                            "value": "***" if spec.secret else raw,
-                        }
-                    )
+            env_var_info = (
+                [
+                    spec.describe(env_values.get(spec.key, ""))
+                    for spec in worker_class.env_var_specs
+                ]
+                if worker_class
+                else []
+            )
             result.append(
                 {
                     "name": svc["name"],
@@ -58,7 +50,7 @@ def create_router(
                     ),
                     "description": worker_class.description if worker_class else "",
                     "is_running": scheduler.is_running(svc["name"]),
-                    "last_result": state,
+                    "last_result": scheduler.get_state(svc["name"]),
                     "env_vars": env_var_info,
                 }
             )
@@ -101,7 +93,9 @@ def create_router(
             raise HTTPException(status_code=404, detail=f"Service '{name}' not found")
         try:
             scheduler.set_enabled(name, body.enabled)
-        except Exception as e:
+        except KeyError as e:
+            raise HTTPException(status_code=404, detail=f"Service '{name}' not found") from e
+        except OSError as e:
             raise HTTPException(status_code=500, detail=str(e)) from e
         return {"status": "ok", "service": name, "enabled": body.enabled}
 

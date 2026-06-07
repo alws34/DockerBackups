@@ -9,6 +9,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import ClassVar
 
 from app.core.context import BackupContext, BackupError, BackupResult
 
@@ -27,14 +28,28 @@ class EnvVarSpec:
     # Key in service_config["options"] that points to this env var's name.
     option_key: str = ""
 
+    def describe(self, raw_value: str) -> dict[str, object]:
+        """Return a UI-facing dict, masking the value when the var is secret."""
+        return {
+            "key": self.key,
+            "label": self.label,
+            "description": self.description,
+            "secret": self.secret,
+            "required": self.required,
+            "configured": bool(raw_value),
+            "value": "***" if self.secret else raw_value,
+        }
+
 
 class BackupWorker(ABC):
     """Base class providing config access and common helpers for workers."""
 
-    worker_type: str = ""
-    display_name: str = ""
-    description: str = ""
-    env_var_specs: list[EnvVarSpec] = []
+    worker_type: ClassVar[str] = ""
+    display_name: ClassVar[str] = ""
+    description: ClassVar[str] = ""
+    # ClassVar so subclasses share/override the spec list without it becoming a
+    # mutable instance default shared across every instance.
+    env_var_specs: ClassVar[list[EnvVarSpec]] = []
 
     def __init__(self, service_config: dict) -> None:
         self.service_config = service_config
@@ -110,7 +125,9 @@ class BackupWorker(ABC):
         """
         log_cmd = redacted_command or command
         logger.debug(f"Running: {' '.join(log_cmd)}")
-        result = subprocess.run(
+        # Blocking subprocess is intentional: workers always run inside a thread
+        # executor (see BackupScheduler.run_service), so this never blocks the loop.
+        result = subprocess.run(  # noqa: S603
             command,
             env=env,
             capture_output=capture,

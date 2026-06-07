@@ -8,6 +8,7 @@ import tarfile
 import tempfile
 from datetime import datetime
 from pathlib import Path
+from typing import ClassVar
 
 import requests
 
@@ -39,12 +40,12 @@ _PAGE_SIZE = 500
 class SnipeItWorker(BackupWorker):
     """Export assets, licenses, and configuration via the Snipe-IT REST API."""
 
-    worker_type: str = "snipeit"
-    display_name: str = "Snipe-IT"
-    description: str = (
+    worker_type: ClassVar[str] = "snipeit"
+    display_name: ClassVar[str] = "Snipe-IT"
+    description: ClassVar[str] = (
         "Full export of assets, licenses, and configuration via Snipe-IT REST API."
     )
-    env_var_specs: list[EnvVarSpec] = [
+    env_var_specs: ClassVar[list[EnvVarSpec]] = [
         EnvVarSpec(
             key="SNIPEIT_URL",
             label="Snipe-IT URL",

@@ -16,12 +16,16 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from app.core.env_manager import EnvManager
-from app.destinations.google_drive import ALL_DESTINATIONS, _CREDS_PATH, _TOKENS_PATH
+from app.destinations.google_drive import (
+    _CREDS_PATH,
+    _SCOPES,
+    _TOKENS_PATH,
+    ALL_DESTINATIONS,
+    ENABLED_ENV,
+)
 
 # In-memory store: state -> {redirect_uri, code_verifier}
 _pending_oauth: dict[str, dict[str, str]] = {}
-
-_SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
 
 class DestinationEnvVarUpdate(BaseModel):
@@ -46,21 +50,11 @@ def create_router(env_manager: EnvManager) -> APIRouter:
         env_values = env_manager.read()
         result = []
         for dest_class in ALL_DESTINATIONS:
-            env_var_info = []
-            for spec in dest_class.env_var_specs:
-                raw = env_values.get(spec.key, "")
-                env_var_info.append(
-                    {
-                        "key": spec.key,
-                        "label": spec.label,
-                        "description": spec.description,
-                        "secret": spec.secret,
-                        "required": spec.required,
-                        "configured": bool(raw),
-                        "value": "***" if spec.secret else raw,
-                    }
-                )
-            enabled_raw = env_values.get("GOOGLE_DRIVE_ENABLED", "").strip().lower()
+            env_var_info = [
+                spec.describe(env_values.get(spec.key, ""))
+                for spec in dest_class.env_var_specs
+            ]
+            enabled_raw = env_values.get(ENABLED_ENV, "").strip().lower()
             creds_path = Path(os.environ.get("GOOGLE_CREDENTIALS_FILE", str(_CREDS_PATH)))
             tokens_path = Path(os.environ.get("GOOGLE_TOKENS_FILE", str(_TOKENS_PATH)))
             result.append(
@@ -156,7 +150,7 @@ def create_router(env_manager: EnvManager) -> APIRouter:
                 code_challenge=code_challenge,
                 code_challenge_method="S256",
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - surface any Google flow error to the UI
             raise HTTPException(
                 status_code=500, detail=f"Failed to build auth URL: {e}"
             ) from e
@@ -171,16 +165,13 @@ def create_router(env_manager: EnvManager) -> APIRouter:
     async def oauth_callback(code: str, state: str) -> HTMLResponse:
         """Exchange the OAuth2 authorization code for tokens and store them."""
         pending = _pending_oauth.pop(state, None)
-        if not pending:
-            redirect_uri = None
-        else:
-            redirect_uri = pending["redirect_uri"]
-        if not redirect_uri:
+        if not pending or not pending.get("redirect_uri"):
             return HTMLResponse(
                 "<html><body><h2>Error: unknown or expired OAuth state. "
                 "Try authorizing again.</h2></body></html>",
                 status_code=400,
             )
+        redirect_uri = pending["redirect_uri"]
 
         creds_path = Path(os.environ.get("GOOGLE_CREDENTIALS_FILE", str(_CREDS_PATH)))
         tokens_path = Path(os.environ.get("GOOGLE_TOKENS_FILE", str(_TOKENS_PATH)))
@@ -192,7 +183,7 @@ def create_router(env_manager: EnvManager) -> APIRouter:
             )
             flow.fetch_token(code=code, code_verifier=pending["code_verifier"])
             creds = flow.credentials
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - report any token-exchange error to the user
             return HTMLResponse(
                 f"<html><body><h2>Authorization failed: {e}</h2></body></html>",
                 status_code=500,

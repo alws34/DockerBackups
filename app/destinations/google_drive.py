@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from app.core.context import BackupError, BackupResult
 from app.destinations.base import BackupDestination
@@ -17,19 +17,23 @@ _SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 _CREDS_PATH = Path("/config/google-credentials.json")
 _TOKENS_PATH = Path("/config/google-tokens.json")
 
+# Env var names that control the Google Drive destination.
+ENABLED_ENV = "GOOGLE_DRIVE_ENABLED"
+FOLDER_ID_ENV = "GOOGLE_DRIVE_FOLDER_ID"
+
 
 class GoogleDriveDestination(BackupDestination):
     """Upload backup files to a Google Drive folder via OAuth2 credentials."""
 
-    destination_type: str = "google_drive"
-    display_name: str = "Google Drive"
-    description: str = (
+    destination_type: ClassVar[str] = "google_drive"
+    display_name: ClassVar[str] = "Google Drive"
+    description: ClassVar[str] = (
         "Upload backup files to a Google Drive folder via OAuth2. "
         "Upload your client_secret.json then click Authorize in the UI."
     )
-    env_var_specs: list[EnvVarSpec] = [
+    env_var_specs: ClassVar[list[EnvVarSpec]] = [
         EnvVarSpec(
-            key="GOOGLE_DRIVE_ENABLED",
+            key=ENABLED_ENV,
             label="Enable Google Drive",
             description=(
                 "Set to 'true' to upload backups to Google Drive "
@@ -39,7 +43,7 @@ class GoogleDriveDestination(BackupDestination):
             required=False,
         ),
         EnvVarSpec(
-            key="GOOGLE_DRIVE_FOLDER_ID",
+            key=FOLDER_ID_ENV,
             label="Drive Folder ID",
             description="Folder ID from the Drive URL (share it with your Google account).",
             secret=False,
@@ -149,27 +153,27 @@ def create_google_drive_destination(
     The env var ``GOOGLE_DRIVE_ENABLED`` takes precedence over the config file;
     raises ``BackupError`` if enabled but the target folder ID is missing.
     """
-    enabled_env = context_env.get("GOOGLE_DRIVE_ENABLED", "").strip().lower()
-    if enabled_env == "true":
-        enabled = True
-    elif enabled_env == "false":
-        enabled = False
-    else:
-        gd_config = config.get("destinations", {}).get("google_drive", {})
-        enabled = gd_config.get("enabled", False)
+    gd_config = config.get("destinations", {}).get("google_drive", {})
+
+    match context_env.get(ENABLED_ENV, "").strip().lower():
+        case "true":
+            enabled = True
+        case "false":
+            enabled = False
+        case _:
+            enabled = gd_config.get("enabled", False)
 
     if not enabled:
         return None
 
-    gd_config = config.get("destinations", {}).get("google_drive", {})
-    folder_id_env = gd_config.get("folder_id_env", "GOOGLE_DRIVE_FOLDER_ID")
-    folder_id = context_env.get(folder_id_env) or context_env.get("GOOGLE_DRIVE_FOLDER_ID")
+    folder_id_env = gd_config.get("folder_id_env", FOLDER_ID_ENV)
+    folder_id = context_env.get(folder_id_env) or context_env.get(FOLDER_ID_ENV)
     credentials_file = Path(gd_config.get("credentials_file", str(_CREDS_PATH)))
     tokens_file = Path(gd_config.get("tokens_file", str(_TOKENS_PATH)))
 
     if not folder_id:
         raise BackupError(
-            "Google Drive enabled but GOOGLE_DRIVE_FOLDER_ID is not set. "
+            f"Google Drive enabled but {FOLDER_ID_ENV} is not set. "
             "Configure it in the UI under Destinations."
         )
     return GoogleDriveDestination(

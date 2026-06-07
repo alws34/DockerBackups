@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime
+from typing import ClassVar
 
 import requests
 
@@ -17,13 +18,13 @@ logger = logging.getLogger(__name__)
 class LinkwardenWorker(BackupWorker):
     """Export bookmarks and collections via the Linkwarden migration endpoint."""
 
-    worker_type: str = "linkwarden"
-    display_name: str = "Linkwarden"
-    description: str = (
+    worker_type: ClassVar[str] = "linkwarden"
+    display_name: ClassVar[str] = "Linkwarden"
+    description: ClassVar[str] = (
         "Full export of bookmarks and collections "
         "via Linkwarden API migration endpoint."
     )
-    env_var_specs: list[EnvVarSpec] = [
+    env_var_specs: ClassVar[list[EnvVarSpec]] = [
         EnvVarSpec(
             key="LINKWARDEN_URL",
             label="Linkwarden URL",

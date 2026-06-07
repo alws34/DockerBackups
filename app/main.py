@@ -30,10 +30,9 @@ async def main() -> None:
     config_file = os.environ.get("CONFIG_FILE", "/config/services.json")
     env_file_path = os.environ.get("ENV_FILE", "")
 
-    if env_file_path and Path(env_file_path).exists():
-        env_file = Path(env_file_path)
-    elif Path(".env").exists():
-        env_file = Path(".env")
+    # Prefer an explicit ENV_FILE when it exists, otherwise fall back to ./.env.
+    if env_file_path and (configured := Path(env_file_path)).exists():
+        env_file = configured
     else:
         env_file = Path(".env")
 

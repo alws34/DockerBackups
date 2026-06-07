@@ -8,6 +8,7 @@ import tarfile
 import tempfile
 from datetime import datetime
 from pathlib import Path
+from typing import ClassVar
 
 import requests
 
@@ -20,13 +21,13 @@ logger = logging.getLogger(__name__)
 class KitchenOwlWorker(BackupWorker):
     """Export recipes and household data via the KitchenOwl API."""
 
-    worker_type: str = "kitchenowl"
-    display_name: str = "KitchenOwl"
-    description: str = (
+    worker_type: ClassVar[str] = "kitchenowl"
+    display_name: ClassVar[str] = "KitchenOwl"
+    description: ClassVar[str] = (
         "Exports recipes and household data via KitchenOwl API "
         "using a long-lived token."
     )
-    env_var_specs: list[EnvVarSpec] = [
+    env_var_specs: ClassVar[list[EnvVarSpec]] = [
         EnvVarSpec(
             key="KITCHENOWL_URL",
             label="KitchenOwl URL",

@@ -7,6 +7,7 @@ import shutil
 import tarfile
 from datetime import datetime
 from pathlib import Path
+from typing import ClassVar
 
 import requests
 
@@ -48,10 +49,12 @@ query ($id: Int!) {
 class WikiJsWorker(BackupWorker):
     """Export every Wiki.js page via the GraphQL API into a compressed tar."""
 
-    worker_type: str = "wikijs"
-    display_name: str = "Wiki.js"
-    description: str = "Export all pages via GraphQL API and archive as compressed tar."
-    env_var_specs: list[EnvVarSpec] = [
+    worker_type: ClassVar[str] = "wikijs"
+    display_name: ClassVar[str] = "Wiki.js"
+    description: ClassVar[str] = (
+        "Export all pages via GraphQL API and archive as compressed tar."
+    )
+    env_var_specs: ClassVar[list[EnvVarSpec]] = [
         EnvVarSpec(
             key="WIKIJS_URL",
             option_key="wikijs_url_env",

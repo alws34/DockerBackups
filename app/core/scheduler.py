@@ -17,6 +17,17 @@ from app.destinations.google_drive import create_google_drive_destination
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_STATE_ROOT = "/state"
+_DEFAULT_DAILY_AT = "03:30"
+_DEFAULT_KEEP_DAYS = 30
+_STATE_FILENAME = "last_result.json"
+_SECONDS_PER_HOUR = 3600
+
+
+def _state_root() -> Path:
+    """Return the root directory holding per-service state files."""
+    return Path(os.environ.get("STATE_ROOT", _DEFAULT_STATE_ROOT))
+
 
 class BackupScheduler:
     """Loads service config, runs workers on schedule, and tracks their state."""
@@ -27,7 +38,7 @@ class BackupScheduler:
         registry: WorkerRegistry,
         env_manager: EnvManager | None = None,
     ) -> None:
-        self.config_file = config_file
+        self.config_file = Path(config_file)
         self.registry = registry
         self.env_manager = env_manager
         self._config: dict[str, Any] = {}
@@ -35,8 +46,11 @@ class BackupScheduler:
 
     def load_config(self) -> None:
         """Load the JSON service configuration from disk into memory."""
-        with open(self.config_file) as f:
-            self._config = json.load(f)
+        self._config = json.loads(self.config_file.read_text())
+
+    def _save_config(self) -> None:
+        """Persist the in-memory configuration back to disk as pretty JSON."""
+        self.config_file.write_text(json.dumps(self._config, indent=2) + "\n")
 
     def get_config(self) -> dict[str, Any]:
         """Return the in-memory service configuration."""
@@ -44,11 +58,13 @@ class BackupScheduler:
 
     def get_settings(self) -> dict:
         """Return schedule and retention settings, applying defaults."""
+        schedule = self._config.get("schedule", {})
+        retention = self._config.get("retention", {})
         return {
-            "daily_at": self._config.get("schedule", {}).get("daily_at", "03:30"),
-            "interval_hours": self._config.get("schedule", {}).get("interval_hours", 0),
-            "run_on_start": self._config.get("schedule", {}).get("run_on_start", False),
-            "keep_days": self._config.get("retention", {}).get("keep_days", 30),
+            "daily_at": schedule.get("daily_at", _DEFAULT_DAILY_AT),
+            "interval_hours": schedule.get("interval_hours", 0),
+            "run_on_start": schedule.get("run_on_start", False),
+            "keep_days": retention.get("keep_days", _DEFAULT_KEEP_DAYS),
         }
 
     def update_settings(
@@ -59,13 +75,12 @@ class BackupScheduler:
         keep_days: int,
     ) -> None:
         """Update schedule and retention settings and persist them to disk."""
-        self._config.setdefault("schedule", {})["daily_at"] = daily_at
-        self._config.setdefault("schedule", {})["interval_hours"] = interval_hours
-        self._config.setdefault("schedule", {})["run_on_start"] = run_on_start
+        schedule = self._config.setdefault("schedule", {})
+        schedule["daily_at"] = daily_at
+        schedule["interval_hours"] = interval_hours
+        schedule["run_on_start"] = run_on_start
         self._config.setdefault("retention", {})["keep_days"] = keep_days
-        with open(self.config_file, "w") as f:
-            json.dump(self._config, f, indent=2)
-            f.write("\n")
+        self._save_config()
 
     def set_enabled(self, service_name: str, enabled: bool) -> None:
         """Toggle a service's enabled flag and persist the change to disk."""
@@ -74,9 +89,7 @@ class BackupScheduler:
         if svc is None:
             raise KeyError(service_name)
         svc["enabled"] = enabled
-        with open(self.config_file, "w") as f:
-            json.dump(self._config, f, indent=2)
-            f.write("\n")
+        self._save_config()
 
     def is_running(self, service_name: str) -> bool:
         """Return whether a backup for the named service is in progress."""
@@ -84,17 +97,13 @@ class BackupScheduler:
 
     def get_state(self, service_name: str) -> dict | None:
         """Return the last persisted result for a service, or ``None``."""
-        state_file = (
-            Path(os.environ.get("STATE_ROOT", "/state"))
-            / service_name
-            / "last_result.json"
-        )
-        if state_file.exists():
-            try:
-                return json.loads(state_file.read_text())
-            except (json.JSONDecodeError, OSError):
-                return None
-        return None
+        state_file = _state_root() / service_name / _STATE_FILENAME
+        if not state_file.exists():
+            return None
+        try:
+            return json.loads(state_file.read_text())
+        except (json.JSONDecodeError, OSError):
+            return None
 
     async def run_forever(self) -> None:
         """Run enabled services on the configured schedule, indefinitely."""
@@ -103,7 +112,7 @@ class BackupScheduler:
             await self._run_all_services()
         while True:
             seconds = self._seconds_until_next_run()
-            logger.info(f"Next scheduled backup in {seconds / 3600:.1f} hours")
+            logger.info(f"Next scheduled backup in {seconds / _SECONDS_PER_HOUR:.1f} hours")
             await asyncio.sleep(seconds)
             await self._run_all_services()
 
@@ -130,7 +139,7 @@ class BackupScheduler:
         try:
             worker = self.registry.create(service_config)
             context = self._make_context()
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             result: BackupResult = await loop.run_in_executor(None, worker.run, context)
             self._persist_state(name, result)
             if result.success:
@@ -161,14 +170,14 @@ class BackupScheduler:
         for file_path in result.output_files:
             try:
                 destination.upload(file_path, result)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - isolate per-file upload failures
                 logger.error(
                     f"[{result.service_name}] Google Drive upload failed "
                     f"for {file_path.name}: {e}"
                 )
 
     def _make_context(self) -> BackupContext:
-        retention = self._config.get("retention", {}).get("keep_days", 30)
+        retention = self._config.get("retention", {}).get("keep_days", _DEFAULT_KEEP_DAYS)
         # Merge os.environ with the live .env file so edits take effect without a restart.
         env = dict(os.environ)
         if self.env_manager:
@@ -176,54 +185,49 @@ class BackupScheduler:
         return BackupContext(
             backup_root=Path(env.get("BACKUP_ROOT", "/backups")),
             log_root=Path(env.get("LOG_ROOT", "/logs")),
-            state_root=Path(env.get("STATE_ROOT", "/state")),
+            state_root=Path(env.get("STATE_ROOT", _DEFAULT_STATE_ROOT)),
             retention_days=retention,
             env=env,
         )
 
     def _seconds_until_next_run(self) -> float:
         schedule = self._config.get("schedule", {})
-        interval_hours = schedule.get("interval_hours", 0)
-        if interval_hours and interval_hours > 0:
-            return interval_hours * 3600
-        daily_at = schedule.get("daily_at", "03:30")
-        h, m = map(int, daily_at.split(":"))
+        if (interval_hours := schedule.get("interval_hours", 0)) > 0:
+            return interval_hours * _SECONDS_PER_HOUR
+        hour, minute = map(int, schedule.get("daily_at", _DEFAULT_DAILY_AT).split(":"))
         now = datetime.now()
-        target = now.replace(hour=h, minute=m, second=0, microsecond=0)
+        target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
         if target <= now:
             target += timedelta(days=1)
         return (target - now).total_seconds()
 
-    def _persist_state(self, service_name: str, result: BackupResult) -> None:
-        state_dir = Path(os.environ.get("STATE_ROOT", "/state")) / service_name
+    def _write_state(self, service_name: str, state: dict[str, Any]) -> None:
+        """Write a service's last-run state to its state file, creating dirs."""
+        state_dir = _state_root() / service_name
         state_dir.mkdir(parents=True, exist_ok=True)
-        state_file = state_dir / "last_result.json"
-        state_file.write_text(
-            json.dumps(
-                {
-                    "success": result.success,
-                    "message": result.message,
-                    "started_at": result.started_at.isoformat(),
-                    "finished_at": result.finished_at.isoformat(),
-                    "output_files": [str(f) for f in result.output_files],
-                },
-                indent=2,
-            )
+        (state_dir / _STATE_FILENAME).write_text(json.dumps(state, indent=2))
+
+    def _persist_state(self, service_name: str, result: BackupResult) -> None:
+        self._write_state(
+            service_name,
+            {
+                "success": result.success,
+                "message": result.message,
+                "started_at": result.started_at.isoformat(),
+                "finished_at": result.finished_at.isoformat(),
+                "output_files": [str(f) for f in result.output_files],
+            },
         )
 
     def _persist_error_state(self, service_name: str, error: str) -> None:
-        state_dir = Path(os.environ.get("STATE_ROOT", "/state")) / service_name
-        state_dir.mkdir(parents=True, exist_ok=True)
-        state_file = state_dir / "last_result.json"
-        state_file.write_text(
-            json.dumps(
-                {
-                    "success": False,
-                    "message": error,
-                    "started_at": datetime.now().isoformat(),
-                    "finished_at": datetime.now().isoformat(),
-                    "output_files": [],
-                },
-                indent=2,
-            )
+        now = datetime.now().isoformat()
+        self._write_state(
+            service_name,
+            {
+                "success": False,
+                "message": error,
+                "started_at": now,
+                "finished_at": now,
+                "output_files": [],
+            },
         )

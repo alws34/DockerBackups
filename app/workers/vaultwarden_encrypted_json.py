@@ -6,6 +6,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
+from typing import ClassVar
 
 from app.core.context import BackupContext, BackupError, BackupResult
 from app.workers.base import BackupWorker, EnvVarSpec
@@ -16,10 +17,10 @@ logger = logging.getLogger(__name__)
 class VaultwardenEncryptedJsonWorker(BackupWorker):
     """Produce an encrypted JSON vault export using the ``bw`` Bitwarden CLI."""
 
-    worker_type: str = "vaultwarden_encrypted_json"
-    display_name: str = "Vaultwarden (Encrypted JSON)"
-    description: str = "Daily encrypted JSON vault export using the Bitwarden CLI."
-    env_var_specs: list[EnvVarSpec] = [
+    worker_type: ClassVar[str] = "vaultwarden_encrypted_json"
+    display_name: ClassVar[str] = "Vaultwarden (Encrypted JSON)"
+    description: ClassVar[str] = "Daily encrypted JSON vault export using the Bitwarden CLI."
+    env_var_specs: ClassVar[list[EnvVarSpec]] = [
         EnvVarSpec(
             key="VAULTWARDEN_URL",
             option_key="vaultwarden_url_env",
