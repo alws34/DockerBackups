@@ -1,0 +1,38 @@
+services:
+  service-backup-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: service-backup-agent
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    environment:
+      CONFIG_FILE: /config/services.json
+      BACKUP_ROOT: /backups
+      LOG_ROOT: /logs
+      STATE_ROOT: /state
+      ENV_FILE: /app-env/.env
+      TZ: Asia/Jerusalem
+
+    ports:
+      - "8080:8080"
+
+    volumes:
+      - ./config:/config
+      - ./.env:/app-env/.env:rw
+      - ./backups:/backups
+      - ./logs:/logs
+      - ./state:/state
+      # Uncomment to enable Google Drive destination:
+      #- ./client_secret_23202948943-ukajovebje4vsm4k4sfm4m62ib028hu7.apps.googleusercontent.com.json:/config/google-credentials.json:ro
+
+    networks:
+      - backup-net
+
+networks:
+  backup-net:
+    name: backup-net

@@ -1,0 +1,94 @@
+# Service Backup Agent
+
+Modular Docker-based backup system for self-hosted services, with a web GUI.
+
+## Quick Start
+
+```bash
+cp .env.example .env
+chmod 600 .env
+# Fill in .env with your real values
+
+chmod 700 backups logs state
+
+docker compose build
+docker compose up -d
+docker logs -f service-backup-agent
+```
+
+Open the GUI at **http://localhost:8080**
+
+## Architecture
+
+```
+Scheduler (async)
+  → reads config/services.json
+  → creates workers via WorkerRegistry
+  → calls worker.run(BackupContext)
+  → persists state to /state/{service}/last_result.json
+
+FastAPI (concurrent with scheduler via asyncio.gather)
+  → GET  /api/services          — list services + status + env var metadata
+  → POST /api/services/{n}/trigger — manual trigger
+  → GET  /api/logs/{service}    — recent log lines
+  → GET  /api/env-vars/{type}   — env var specs for worker type
+  → PUT  /api/env-vars/{type}   — update .env file (chmod 600 enforced)
+  → GET  /                      — web GUI (vanilla JS, no build step)
+```
+
+## Adding a New Service
+
+1. Create `app/workers/<name>.py` inheriting `BackupWorker`
+2. Set `worker_type`, `display_name`, `description`, `env_var_specs`
+3. Implement `run(context: BackupContext) -> BackupResult`
+4. Register in `app/core/registry.py → create_default_registry()`
+5. Add entry to `config/services.json`
+
+The GUI loads worker metadata dynamically — no GUI changes needed.
+
+## Google Drive Setup
+
+1. Create a Google Cloud project and enable the Drive API
+2. Create a service account, download the JSON key → `config/google-credentials.json`
+3. Share your target Drive folder with the service account's email address
+4. Set `GOOGLE_DRIVE_FOLDER_ID` in `.env`
+5. Set `google_drive.enabled: true` in `config/services.json`
+6. Uncomment the credentials volume in `docker-compose.yml`
+
+## Wiki.js API Token
+
+1. Open Wiki.js admin panel → Administration → API Access
+2. Click "Enable API" if not already enabled
+3. Click "New API Key" → give it a name → copy the token
+4. Set `WIKIJS_API_TOKEN` in `.env`
+5. Enable wikijs service in `config/services.json`
+
+## Vaultwarden API Key
+
+1. Open Vaultwarden web vault → Account Settings → Security → API Key
+2. Copy Client ID and Client Secret
+3. Set `BW_CLIENTID`, `BW_CLIENTSECRET`, `BW_PASSWORD` in `.env`
+4. Set `VAULTWARDEN_EXPORT_PASSWORD` to a **different** password (encrypts the backup file)
+
+## Security Notes
+
+- `.env` is `chmod 600` — enforced by the app on every write
+- Secrets are never printed in logs (subprocess commands are redacted before logging)
+- Backup files are `chmod 600`
+- No Docker socket is mounted
+- The web GUI has **no authentication** — put it behind an auth proxy (nginx + basic auth, Authelia, Traefik forward auth) for remote access
+- Google Drive credentials are mounted read-only
+
+## Check Backups
+
+```bash
+ls -lh backups/vaultwarden/
+ls -lh backups/wikijs/
+```
+
+## Run Tests
+
+```bash
+pip install -r requirements.txt
+pytest -v
+```

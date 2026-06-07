@@ -1,0 +1,11 @@
+.env
+backups/
+logs/
+state/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+dist/
+.DS_Store
+config/google-credentials.json

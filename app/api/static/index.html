@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Service Backup Agent</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>Service Backup Agent</h1>
+    <button id="refresh-btn">Refresh</button>
+  </header>
+
+  <main>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:2rem 0 .75rem">
+      <div class="section-title" style="margin:0">Services</div>
+      <button class="btn btn-primary btn-sm" onclick="runAll()">Run All</button>
+    </div>
+    <div id="service-grid" class="grid">
+      <p style="color:var(--muted)">Loading…</p>
+    </div>
+
+    <div class="section-title">Destinations</div>
+    <div id="destination-grid" class="grid">
+      <p style="color:var(--muted)">Loading…</p>
+    </div>
+
+    <div class="section-title">Settings</div>
+    <div id="settings-panel">
+      <p style="color:var(--muted)">Loading…</p>
+    </div>
+  </main>
+
+  <div class="modal-backdrop" id="config-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="modal-title">Configure</h2>
+        <button class="modal-close" onclick="closeModal()">&#x2715;</button>
+      </div>
+      <div class="env-form" id="env-form"></div>
+      <div class="save-row">
+        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveEnvVars()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
