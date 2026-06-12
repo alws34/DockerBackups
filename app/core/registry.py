@@ -42,6 +42,7 @@ def create_default_registry() -> WorkerRegistry:
     from app.workers.bar_assistant import BarAssistantWorker
     from app.workers.kitchenowl import KitchenOwlWorker
     from app.workers.linkwarden import LinkwardenWorker
+    from app.workers.n8n import N8nWorker
     from app.workers.snipeit import SnipeItWorker
     from app.workers.vaultwarden_encrypted_json import VaultwardenEncryptedJsonWorker
     from app.workers.wikijs import WikiJsWorker
@@ -53,4 +54,5 @@ def create_default_registry() -> WorkerRegistry:
     registry.register(BarAssistantWorker.worker_type, BarAssistantWorker)
     registry.register(KitchenOwlWorker.worker_type, KitchenOwlWorker)
     registry.register(LinkwardenWorker.worker_type, LinkwardenWorker)
+    registry.register(N8nWorker.worker_type, N8nWorker)
     return registry

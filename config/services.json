@@ -56,6 +56,11 @@
       "name": "linkwarden",
       "type": "linkwarden",
       "enabled": true
+    },
+    {
+      "name": "n8n",
+      "type": "n8n",
+      "enabled": true
     }
   ]
 }
