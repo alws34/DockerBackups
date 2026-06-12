@@ -462,9 +462,15 @@ function renderSettings(s) {
           autocomplete="off" spellcheck="false" style="max-width:120px" />
       </div>
       <div class="field">
-        <label>Retention (days to keep old backups)</label>
+        <label>Local retention (days to keep old backups)</label>
         <input type="number" id="setting-keep-days" value="${s.keep_days}" min="1" step="1"
           style="max-width:120px" />
+      </div>
+      <div class="field">
+        <label>Google Drive — max backups to keep per service</label>
+        <input type="number" id="setting-drive-keep-count" value="${s.drive_keep_count ?? 3}" min="1" step="1"
+          style="max-width:120px" />
+        <span class="hint">Oldest files beyond this count are deleted from Drive after each upload.</span>
       </div>
       <div class="toggle-row">
         <span class="toggle-label">Run backup on container start</span>
@@ -484,6 +490,7 @@ function renderSettings(s) {
 async function saveSettings() {
   const daily_at = document.getElementById("setting-daily-at").value.trim();
   const keep_days = parseInt(document.getElementById("setting-keep-days").value, 10);
+  const drive_keep_count = parseInt(document.getElementById("setting-drive-keep-count").value, 10);
   const interval_hours = parseInt(document.getElementById("setting-interval-hours").value, 10) || 0;
   const run_on_start = document.getElementById("setting-run-on-start").checked;
 
@@ -495,11 +502,15 @@ async function saveSettings() {
     showToast("Retention must be at least 1 day", "err");
     return;
   }
+  if (!drive_keep_count || drive_keep_count < 1) {
+    showToast("Drive keep count must be at least 1", "err");
+    return;
+  }
   try {
     const res = await fetch(`${API}/api/settings`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ daily_at, interval_hours, run_on_start, keep_days }),
+      body: JSON.stringify({ daily_at, interval_hours, run_on_start, keep_days, drive_keep_count }),
     });
     if (!res.ok) {
       const e = await res.json();

@@ -5,7 +5,8 @@
     "interval_hours": 0
   },
   "retention": {
-    "keep_days": 30
+    "keep_days": 30,
+    "drive_keep_count": 3
   },
   "destinations": {
     "google_drive": {

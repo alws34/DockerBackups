@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_STATE_ROOT = "/state"
 _DEFAULT_DAILY_AT = "03:30"
 _DEFAULT_KEEP_DAYS = 30
+_DEFAULT_DRIVE_KEEP_COUNT = 3
 _STATE_FILENAME = "last_result.json"
 _SECONDS_PER_HOUR = 3600
 
@@ -65,6 +66,7 @@ class BackupScheduler:
             "interval_hours": schedule.get("interval_hours", 0),
             "run_on_start": schedule.get("run_on_start", False),
             "keep_days": retention.get("keep_days", _DEFAULT_KEEP_DAYS),
+            "drive_keep_count": retention.get("drive_keep_count", _DEFAULT_DRIVE_KEEP_COUNT),
         }
 
     def update_settings(
@@ -73,13 +75,16 @@ class BackupScheduler:
         interval_hours: int,
         run_on_start: bool,
         keep_days: int,
+        drive_keep_count: int,
     ) -> None:
         """Update schedule and retention settings and persist them to disk."""
         schedule = self._config.setdefault("schedule", {})
         schedule["daily_at"] = daily_at
         schedule["interval_hours"] = interval_hours
         schedule["run_on_start"] = run_on_start
-        self._config.setdefault("retention", {})["keep_days"] = keep_days
+        retention = self._config.setdefault("retention", {})
+        retention["keep_days"] = keep_days
+        retention["drive_keep_count"] = drive_keep_count
         self._save_config()
 
     def set_enabled(self, service_name: str, enabled: bool) -> None:
@@ -167,9 +172,12 @@ class BackupScheduler:
             return
         if destination is None:
             return
+        keep_count = self._config.get("retention", {}).get(
+            "drive_keep_count", _DEFAULT_DRIVE_KEEP_COUNT
+        )
         for file_path in result.output_files:
             try:
-                destination.upload(file_path, result)
+                destination.upload(file_path, result, keep_count=keep_count)
             except Exception as e:  # noqa: BLE001 - isolate per-file upload failures
                 logger.error(
                     f"[{result.service_name}] Google Drive upload failed "

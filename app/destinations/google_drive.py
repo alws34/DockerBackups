@@ -118,8 +118,29 @@ class GoogleDriveDestination(BackupDestination):
         )
         return folder["id"]
 
-    def upload(self, file_path: Path, result: BackupResult) -> None:
-        """Upload a file into a per-service subfolder of the configured folder."""
+    def _prune_old_files(self, service: Any, subfolder_id: str, keep_count: int, service_name: str) -> None:
+        """Delete oldest files in subfolder beyond keep_count, oldest first."""
+        if keep_count <= 0:
+            return
+        results = (
+            service.files()
+            .list(
+                q=f"'{subfolder_id}' in parents and trashed=false",
+                orderBy="createdTime",
+                fields="files(id,name,createdTime)",
+            )
+            .execute()
+        )
+        files = results.get("files", [])
+        excess = len(files) - keep_count
+        if excess <= 0:
+            return
+        for f in files[:excess]:
+            service.files().delete(fileId=f["id"]).execute()
+            logger.info(f"[{service_name}] Pruned old Drive backup: {f['name']} (id={f['id']})")
+
+    def upload(self, file_path: Path, result: BackupResult, keep_count: int = 0) -> None:
+        """Upload a file into a per-service subfolder, then prune to keep_count."""
         from googleapiclient.http import MediaFileUpload
 
         if not file_path.exists():
@@ -140,6 +161,7 @@ class GoogleDriveDestination(BackupDestination):
             f"[{result.service_name}] Uploaded to Google Drive: "
             f"{uploaded['name']} (id={uploaded['id']})"
         )
+        self._prune_old_files(service, subfolder_id, keep_count, result.service_name)
 
 
 ALL_DESTINATIONS: list[type[GoogleDriveDestination]] = [GoogleDriveDestination]
