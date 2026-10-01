@@ -115,6 +115,7 @@ class SnipeItWorker(BackupWorker):
         backup_dir.mkdir(parents=True, exist_ok=True)
         timestamp = started_at.strftime("%Y%m%d_%H%M%S")
         total_records = 0
+        failed: list[str] = []
 
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
@@ -132,9 +133,14 @@ class SnipeItWorker(BackupWorker):
                         ) from e
                     logger.warning(f"snipeit: skipping {endpoint}: {e}")
                     (work / f"{endpoint}.json").write_text("[]")
+                    failed.append(endpoint)
                 except requests.RequestException as e:
                     logger.warning(f"snipeit: skipping {endpoint}: {e}")
                     (work / f"{endpoint}.json").write_text("[]")
+                    failed.append(endpoint)
+
+            if len(failed) == len(_ENDPOINTS):
+                raise BackupError(f"All Snipe-IT endpoints failed; check SNIPEIT_URL ({base_url})")
 
             archive = backup_dir / f"snipeit_{timestamp}.tar.gz"
             with tarfile.open(archive, "w:gz") as tar:

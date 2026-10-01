@@ -55,12 +55,37 @@
     {
       "name": "linkwarden",
       "type": "linkwarden",
-      "enabled": true
+      "enabled": false
     },
     {
       "name": "n8n",
       "type": "n8n",
+      "enabled": false
+    },
+    {
+      "name": "karakeep",
+      "type": "karakeep",
+      "enabled": false
+    },
+    {
+      "name": "spoolman",
+      "type": "spoolman",
       "enabled": true
+    },
+    {
+      "name": "immich",
+      "type": "immich",
+      "enabled": false
+    },
+    {
+      "name": "nginx_proxy_manager",
+      "type": "nginx_proxy_manager",
+      "enabled": false
+    },
+    {
+      "name": "adguardhome",
+      "type": "adguardhome",
+      "enabled": false
     }
   ]
 }

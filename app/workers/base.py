@@ -2,18 +2,37 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 import subprocess
+import tarfile
+import tempfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import ClassVar
 
+import requests
+
 from app.core.context import BackupContext, BackupError, BackupResult
 
 logger = logging.getLogger(__name__)
+
+
+def fetch_json(
+    session: requests.Session, method: str, url: str, **kwargs: object
+) -> dict | list:
+    """Call an API endpoint and return its JSON body, raising ``BackupError`` on any failure."""
+    try:
+        resp = session.request(method, url, timeout=120, **kwargs)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.RequestException as e:
+        raise BackupError(f"{method} {url} failed: {e}") from e
+    except ValueError as e:
+        raise BackupError(f"{method} {url} returned non-JSON: {resp.text[:200]!r}") from e
 
 
 @dataclass
@@ -91,6 +110,43 @@ class BackupWorker(ABC):
                 f"(referenced by option '{option_key}' in service '{self.service_name}')"
             )
         return value
+
+    def require_env(self, context: BackupContext, key: str) -> str:
+        """Return an env var's value, raising if it is missing or empty."""
+        value = context.env.get(key, "").strip()
+        if not value:
+            raise BackupError(f"{key} is not set")
+        return value
+
+    def archive_json(
+        self, context: BackupContext, started_at: datetime, files: dict[str, object]
+    ) -> BackupResult:
+        """Write ``{name: data}`` as JSON files into one tar.gz and apply retention."""
+        backup_dir = self.service_backup_dir(context)
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        stem = f"{self.service_name}_{started_at.strftime('%Y%m%d_%H%M%S')}"
+        archive = backup_dir / f"{stem}.tar.gz"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            for name, data in files.items():
+                (work / f"{name}.json").write_text(json.dumps(data, indent=2, ensure_ascii=False))
+            with tarfile.open(archive, "w:gz") as tar:
+                tar.add(work, arcname=stem)
+
+        archive.chmod(0o600)
+        self.cleanup_old_files(backup_dir, f"{self.service_name}_*.tar.gz", context.retention_days)
+
+        counts = ", ".join(f"{len(v)} {k}" for k, v in files.items() if isinstance(v, list))
+        return BackupResult(
+            service_name=self.service_name,
+            worker_type=self.worker_type,
+            success=True,
+            message=f"{counts or 'exported'}: {archive.name} ({archive.stat().st_size} bytes)",
+            output_files=[archive],
+            started_at=started_at,
+            finished_at=datetime.now(),
+        )
 
     def require_binary(self, binary_name: str) -> str:
         """Return the path to a required binary, raising if it is not on PATH."""

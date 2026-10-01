@@ -39,20 +39,33 @@ def create_default_registry() -> WorkerRegistry:
     Worker imports are deferred to function scope to avoid import cycles
     between the registry and the worker modules.
     """
+    from app.workers.adguardhome import AdGuardHomeWorker
     from app.workers.bar_assistant import BarAssistantWorker
+    from app.workers.immich import ImmichWorker
+    from app.workers.karakeep import KarakeepWorker
     from app.workers.kitchenowl import KitchenOwlWorker
     from app.workers.linkwarden import LinkwardenWorker
     from app.workers.n8n import N8nWorker
+    from app.workers.nginx_proxy_manager import NginxProxyManagerWorker
     from app.workers.snipeit import SnipeItWorker
+    from app.workers.spoolman import SpoolmanWorker
     from app.workers.vaultwarden_encrypted_json import VaultwardenEncryptedJsonWorker
     from app.workers.wikijs import WikiJsWorker
 
     registry = WorkerRegistry()
-    registry.register(VaultwardenEncryptedJsonWorker.worker_type, VaultwardenEncryptedJsonWorker)
-    registry.register(WikiJsWorker.worker_type, WikiJsWorker)
-    registry.register(SnipeItWorker.worker_type, SnipeItWorker)
-    registry.register(BarAssistantWorker.worker_type, BarAssistantWorker)
-    registry.register(KitchenOwlWorker.worker_type, KitchenOwlWorker)
-    registry.register(LinkwardenWorker.worker_type, LinkwardenWorker)
-    registry.register(N8nWorker.worker_type, N8nWorker)
+    for worker in (
+        VaultwardenEncryptedJsonWorker,
+        WikiJsWorker,
+        SnipeItWorker,
+        BarAssistantWorker,
+        KitchenOwlWorker,
+        LinkwardenWorker,
+        N8nWorker,
+        KarakeepWorker,
+        SpoolmanWorker,
+        ImmichWorker,
+        NginxProxyManagerWorker,
+        AdGuardHomeWorker,
+    ):
+        registry.register(worker.worker_type, worker)
     return registry
