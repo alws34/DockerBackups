@@ -18,23 +18,42 @@ docker logs -f service-backup-agent
 
 Open the GUI at **http://localhost:8080**
 
-## Architecture
+## How It Works
 
-```
-Scheduler (async)
-  → reads config/services.json
-  → creates workers via WorkerRegistry
-  → calls worker.run(BackupContext)
-  → persists state to /state/{service}/last_result.json
+Each service has a **worker** that talks to that service's own REST/GraphQL
+API (or, for Vaultwarden, its official CLI) — never the underlying database
+directly. There are no database dumps, no `docker exec` into other
+containers, and no DB credentials anywhere in this project. A worker only
+ever gets what that service's own API is willing to hand back to an
+authenticated client, written out as JSON/Markdown and archived into a
+`tar.gz` (or left as a single JSON file for small exports).
 
-FastAPI (concurrent with scheduler via asyncio.gather)
-  → GET  /api/services          — list services + status + env var metadata
-  → POST /api/services/{n}/trigger — manual trigger
-  → GET  /api/logs/{service}    — recent log lines
-  → GET  /api/env-vars/{type}   — env var specs for worker type
-  → PUT  /api/env-vars/{type}   — update .env file (chmod 600 enforced)
-  → GET  /                      — web GUI (vanilla JS, no build step)
-```
+A scheduler runs each enabled worker on a cron-like schedule, writes the
+result to `state/{service}/last_result.json`, and optionally uploads the
+output to a configured destination (currently Google Drive).
+
+See [`architecture.md`](architecture.md) for the full data flow, API surface,
+and design decisions.
+
+## Supported Services
+
+| Service | Backs Up | Method | Setup |
+|---|---|---|---|
+| [Vaultwarden](docs/services/vaultwarden.md) | Full vault (logins, notes, cards, identities) | `bw` CLI → encrypted JSON | [guide](docs/services/vaultwarden.md) |
+| [Wiki.js](docs/services/wikijs.md) | All pages, content + metadata | GraphQL API | [guide](docs/services/wikijs.md) |
+| [Snipe-IT](docs/services/snipeit.md) | Assets, licenses, accessories, users, locations, custom fields | REST API | [guide](docs/services/snipeit.md) |
+| [Bar Assistant](docs/services/bar-assistant.md) | Cocktails, ingredients, glasses, tags, collections (per bar) | REST API | [guide](docs/services/bar-assistant.md) |
+| [KitchenOwl](docs/services/kitchenowl.md) | Households, recipes, items, shopping lists | REST API | [guide](docs/services/kitchenowl.md) |
+| [Linkwarden](docs/services/linkwarden.md) | Links + collections (full migration export) | REST API | [guide](docs/services/linkwarden.md) |
+| [n8n](docs/services/n8n.md) | Workflows, tags, variables | REST API | [guide](docs/services/n8n.md) |
+| [Karakeep](docs/services/karakeep.md) | Bookmarks (with content), lists, tags, highlights | REST API | [guide](docs/services/karakeep.md) |
+| [Spoolman](docs/services/spoolman.md) | Spools (incl. archived), filaments, vendors, settings | REST API | [guide](docs/services/spoolman.md) |
+| [Immich](docs/services/immich.md) | Metadata only — albums, people, tags, EXIF (not media files) | REST API | [guide](docs/services/immich.md) |
+| [Nginx Proxy Manager](docs/services/nginx-proxy-manager.md) | Hosts, streams, access lists, cert metadata, settings | REST API | [guide](docs/services/nginx-proxy-manager.md) |
+| [AdGuard Home](docs/services/adguard-home.md) | DNS settings, filters, rewrites, clients, DHCP/TLS config | REST API | [guide](docs/services/adguard-home.md) |
+
+**Destination:** [Google Drive](docs/services/google-drive.md) — uploads every
+successful backup after it's written locally.
 
 ## Adding a New Service
 
@@ -43,41 +62,16 @@ FastAPI (concurrent with scheduler via asyncio.gather)
 3. Implement `run(context: BackupContext) -> BackupResult`
 4. Register in `app/core/registry.py → create_default_registry()`
 5. Add entry to `config/services.json`
+6. Add a setup guide under `docs/services/`
 
 The GUI loads worker metadata dynamically — no GUI changes needed.
 
-## Google Drive Setup
+## Security
 
-1. Create a Google Cloud project and enable the Drive API
-2. Create a service account, download the JSON key → `config/google-credentials.json`
-3. Share your target Drive folder with the service account's email address
-4. Set `GOOGLE_DRIVE_FOLDER_ID` in `.env`
-5. Set `google_drive.enabled: true` in `config/services.json`
-6. Uncomment the credentials volume in `docker-compose.yml`
-
-## Wiki.js API Token
-
-1. Open Wiki.js admin panel → Administration → API Access
-2. Click "Enable API" if not already enabled
-3. Click "New API Key" → give it a name → copy the token
-4. Set `WIKIJS_API_TOKEN` in `.env`
-5. Enable wikijs service in `config/services.json`
-
-## Vaultwarden API Key
-
-1. Open Vaultwarden web vault → Account Settings → Security → API Key
-2. Copy Client ID and Client Secret
-3. Set `BW_CLIENTID`, `BW_CLIENTSECRET`, `BW_PASSWORD` in `.env`
-4. Set `VAULTWARDEN_EXPORT_PASSWORD` to a **different** password (encrypts the backup file)
-
-## Security Notes
-
-- `.env` is `chmod 600` — enforced by the app on every write
-- Secrets are never printed in logs (subprocess commands are redacted before logging)
-- Backup files are `chmod 600`
-- No Docker socket is mounted
-- The web GUI has **no authentication** — put it behind an auth proxy (nginx + basic auth, Authelia, Traefik forward auth) for remote access
-- Google Drive credentials are mounted read-only
+The web GUI has **no built-in authentication** — put it behind an auth proxy
+(nginx + basic auth, Authelia, Traefik forward auth) for any remote access.
+See [`security.md`](security.md) for the full threat model and secret-handling
+details.
 
 ## Check Backups
 

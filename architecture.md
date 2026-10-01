@@ -136,14 +136,23 @@ without a restart.
 
 ## Worker Catalogue
 
-| Worker type                   | Service        | Method                   |
-|-------------------------------|----------------|--------------------------|
-| `vaultwarden_encrypted_json`  | Vaultwarden    | `bw` CLI, encrypted JSON |
-| `wikijs`                      | Wiki.js        | GraphQL API export       |
-| `snipeit`                     | Snipe-IT       | REST API + tar archive   |
-| `bar_assistant`               | Bar Assistant  | REST API + tar archive   |
-| `kitchenowl`                  | KitchenOwl     | REST API + tar archive   |
-| `linkwarden`                  | Linkwarden     | REST API JSON export     |
+| Worker type                   | Service              | Method                      |
+|-------------------------------|----------------------|------------------------------|
+| `vaultwarden_encrypted_json`  | Vaultwarden          | `bw` CLI, encrypted JSON     |
+| `wikijs`                      | Wiki.js              | GraphQL API export           |
+| `snipeit`                     | Snipe-IT             | REST API + tar archive       |
+| `bar_assistant`               | Bar Assistant        | REST API + tar archive       |
+| `kitchenowl`                  | KitchenOwl           | REST API + tar archive       |
+| `linkwarden`                  | Linkwarden           | REST API JSON export         |
+| `n8n`                         | n8n                  | REST API JSON export         |
+| `karakeep`                    | Karakeep             | REST API + tar archive       |
+| `spoolman`                    | Spoolman             | REST API (no auth) + tar archive |
+| `immich`                      | Immich (metadata)    | REST API + tar archive       |
+| `nginx_proxy_manager`         | Nginx Proxy Manager  | REST API (token login) + tar archive |
+| `adguardhome`                 | AdGuard Home         | REST API (basic auth) + tar archive |
+
+See [`docs/services/`](docs/services/) for what each worker backs up and how
+to configure its credentials.
 
 ## Destination Catalogue
 
