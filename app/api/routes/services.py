@@ -16,6 +16,12 @@ class EnabledUpdate(BaseModel):
     enabled: bool
 
 
+class NewService(BaseModel):
+    """Request body adding an app to the dashboard."""
+
+    type: str
+
+
 def create_router(
     scheduler: BackupScheduler,
     registry: WorkerRegistry,
@@ -50,6 +56,43 @@ def create_router(
                 }
             )
         return result
+
+    @router.get("/catalog")
+    async def catalog() -> list[dict]:
+        """Every app this build can back up, and whether it is on the dashboard."""
+        added = {s["type"] for s in scheduler.get_config().get("services", [])}
+        return [
+            {
+                "type": worker_type,
+                "display_name": worker_class.display_name,
+                "description": worker_class.description,
+                "settings": [spec.label for spec in worker_class.env_var_specs],
+                "added": worker_type in added,
+            }
+            for worker_type, worker_class in registry.all().items()
+        ]
+
+    @router.post("/services")
+    async def add_service(body: NewService) -> dict:
+        """Put an app on the dashboard (enabled, settings still to fill in)."""
+        try:
+            svc = scheduler.add_service(body.type)
+        except KeyError as e:
+            raise HTTPException(status_code=404, detail=f"Unknown app '{body.type}'") from e
+        except ValueError as e:
+            raise HTTPException(status_code=409, detail="That app is already added") from e
+        return {"status": "added", "service": svc["name"]}
+
+    @router.delete("/services/{name}")
+    async def remove_service(name: str) -> dict:
+        """Take an app off the dashboard; its .env settings and backups are kept."""
+        if scheduler.is_running(name):
+            raise HTTPException(status_code=409, detail="Wait for the running backup to finish")
+        try:
+            scheduler.remove_service(name)
+        except KeyError as e:
+            raise HTTPException(status_code=404, detail=f"Service '{name}' not found") from e
+        return {"status": "removed", "service": name}
 
     @router.post("/services/{name}/trigger")
     async def trigger_service(name: str, background_tasks: BackgroundTasks) -> dict:

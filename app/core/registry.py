@@ -24,6 +24,10 @@ class WorkerRegistry:
             raise BackupError(f"Unknown worker type '{worker_type}'. Known types: {known}")
         return self._registry[worker_type](service_config)
 
+    def all(self) -> dict[str, type[BackupWorker]]:
+        """Return every registered worker type, in registration order."""
+        return dict(self._registry)
+
     def get_class(self, worker_type: str) -> type[BackupWorker] | None:
         """Return the worker class for a type, or ``None`` if not registered."""
         return self._registry.get(worker_type)
