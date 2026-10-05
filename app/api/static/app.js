@@ -1,251 +1,31 @@
-const API = "";
+"use strict";
+// No inline handlers anywhere: every click goes through the delegated listeners at the
+// bottom, so the page runs under a strict Content-Security-Policy (script-src 'self').
+
+const $ = sel => document.querySelector(sel);
 // Escape anything server-provided before it goes into innerHTML: result messages can
 // contain raw text from upstream app APIs, which must never run as markup.
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-let services = [];
-let modalService = null;
 
-async function fetchServices() {
-  try {
-    const res = await fetch(`${API}/api/services`);
-    if (!res.ok) throw new Error("Failed to fetch services");
-    services = await res.json();
-    renderCards(services);
-  } catch (e) {
-    showToast("Failed to load services: " + e.message, "err");
-  }
-}
-
-function statusBadge(svc) {
-  if (!svc.enabled) return `<span class="badge badge-disabled">Disabled</span>`;
-  if (svc.is_running) return `<span class="badge badge-running">Running…</span>`;
-  const lr = svc.last_result;
-  if (!lr) return `<span class="badge badge-never">Never run</span>`;
-  if (lr.success) return `<span class="badge badge-success">OK</span>`;
-  return `<span class="badge badge-error">Failed</span>`;
-}
-
-function lastRunLine(svc) {
-  const lr = svc.last_result;
-  if (!lr) return "";
-  const dt = new Date(lr.finished_at).toLocaleString();
-  const msg = lr.message ? ` — ${esc(lr.message.slice(0, 60))}` : "";
-  return `<div class="last-run">${dt}${msg}</div>${uploadsLine(lr)}`;
-}
-
-function uploadsLine(lr) {
-  if (!lr.uploads) return "";
-  const parts = Object.entries(lr.uploads).map(([type, u]) => {
-    const dest = destinations.find(d => d.type === type);
-    const name = dest ? dest.display_name : type;
-    return `<span class="${u.ok ? "upload-ok" : "upload-err"}" title="${esc(u.message)}">${u.ok ? "&#10003;" : "&#10007;"} ${esc(name)}</span>`;
-  });
-  return `<div class="last-run uploads">${parts.join(" ")}</div>`;
-}
-
-function envDots(svc) {
-  if (!svc.env_vars || !svc.env_vars.length) return "";
-  const dots = svc.env_vars.map(ev =>
-    `<span class="env-dot ${ev.configured ? "ok" : "missing"}" title="${esc(ev.key)}: ${ev.configured ? "set" : "MISSING"}"></span>`
-  ).join("");
-  return `<div class="env-indicators">${dots}</div>`;
-}
-
-function renderCards(svcs) {
-  const grid = document.getElementById("service-grid");
-  if (!svcs.length) {
-    grid.innerHTML = `<p style="color:var(--muted)">No services configured in services.json.</p>`;
-    return;
-  }
-  grid.innerHTML = svcs.map(svc => `
-    <div class="card" data-name="${esc(svc.name)}">
-      <div class="card-header">
-        <div>
-          <div class="card-title">${esc(svc.display_name)}</div>
-          <div class="card-type">${esc(svc.type)}</div>
-        </div>
-        ${statusBadge(svc)}
-      </div>
-      ${svc.description ? `<div class="card-desc">${esc(svc.description)}</div>` : ""}
-      ${envDots(svc)}
-      ${lastRunLine(svc)}
-      <div class="toggle-row">
-        <span class="toggle-label">Enabled</span>
-        <label class="toggle">
-          <input type="checkbox" ${svc.enabled ? "checked" : ""}
-            onchange="toggleService('${svc.name}', this.checked)" />
-          <span class="toggle-track"></span>
-          <span class="toggle-thumb"></span>
-        </label>
-      </div>
-      <div class="card-actions">
-        <button class="btn btn-primary btn-sm"
-          onclick="triggerService('${svc.name}')"
-          ${!svc.enabled || svc.is_running ? "disabled" : ""}>
-          Run Now
-        </button>
-        <button class="btn btn-secondary btn-sm" onclick="openModal('${svc.name}')">
-          Configure
-        </button>
-      </div>
-    </div>
-  `).join("");
-}
-
-async function triggerService(name) {
-  try {
-    const res = await fetch(`${API}/api/services/${name}/trigger`, { method: "POST" });
-    if (!res.ok) {
-      const e = await res.json();
-      throw new Error(e.detail || "Trigger failed");
-    }
-    showToast(`Triggered ${name}`, "ok");
-    setTimeout(fetchServices, 1500);
-  } catch (e) {
-    showToast(e.message, "err");
-  }
-}
-
-async function runAll() {
-  try {
-    const res = await fetch(`${API}/api/services/trigger-all`, { method: "POST" });
-    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || "Failed"); }
-    const data = await res.json();
-    const n = data.triggered.length;
-    showToast(n > 0 ? `Triggered ${n} service${n > 1 ? "s" : ""}` : "No enabled services to run", n > 0 ? "ok" : "err");
-    if (n > 0) setTimeout(fetchServices, 1500);
-  } catch (e) {
-    showToast(e.message, "err");
-  }
-}
-
-async function toggleService(name, enabled) {
-  try {
-    const res = await fetch(`${API}/api/services/${name}/enabled`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled }),
-    });
-    if (!res.ok) {
-      const e = await res.json();
-      throw new Error(e.detail || "Failed");
-    }
-    showToast(`${name} ${enabled ? "enabled" : "disabled"}`, "ok");
-    fetchServices();
-  } catch (e) {
-    showToast(e.message, "err");
-    fetchServices(); // revert checkbox state
-  }
-}
-
-function openModal(name) {
-  modalService = services.find(s => s.name === name);
-  if (!modalService) return;
-  document.getElementById("modal-title").textContent = `Configure: ${modalService.display_name}`;
-  renderEnvForm(modalService);
-  document.getElementById("config-modal").classList.add("open");
-}
-
-function closeModal() {
-  document.getElementById("config-modal").classList.remove("open");
-  modalService = null;
-}
-
-function eyeInput(id, dataKey, isSecret, placeholder, value, extraAttrs = "") {
-  if (!isSecret) {
-    return `<input type="text" id="${esc(id)}" data-key="${esc(dataKey)}"
-      placeholder="${esc(placeholder)}" value="${esc(value)}" autocomplete="off" spellcheck="false" ${extraAttrs} />`;
-  }
-  return `
-    <div class="input-wrap">
-      <input type="password" id="${esc(id)}" data-key="${esc(dataKey)}"
-        placeholder="${esc(placeholder)}" value="" autocomplete="new-password" spellcheck="false" ${extraAttrs} />
-      <button type="button" class="eye-btn" onclick="toggleEye('${id}')" tabindex="-1">&#x1F441;</button>
-    </div>`;
-}
-
-function toggleEye(id) {
-  const inp = document.getElementById(id);
-  if (!inp) return;
-  inp.type = inp.type === "password" ? "text" : "password";
-}
-
-function renderEnvForm(svc) {
-  const form = document.getElementById("env-form");
-  if (!svc.env_vars || !svc.env_vars.length) {
-    form.innerHTML = `<p style="color:var(--muted);font-size:.85rem">No configurable env vars for this worker.</p>`;
-    return;
-  }
-  form.innerHTML = svc.env_vars.map(ev => `
-    <div class="field">
-      <label>
-        ${esc(ev.label)}
-        ${ev.required ? '<span class="required"> *</span>' : ""}
-      </label>
-      ${eyeInput(
-        `field-${ev.key}`, ev.key,
-        ev.secret,
-        ev.secret && ev.configured ? "(already set — leave blank to keep)" : "",
-        ev.secret ? "" : (ev.value || "")
-      )}
-      ${ev.description ? `<span class="hint">${esc(ev.description)}</span>` : ""}
-    </div>
-  `).join("");
-}
-
-async function saveEnvVars() {
-  if (!modalService) return;
-  const inputs = document.querySelectorAll("#env-form input[data-key]");
-  const updates = {};
-  inputs.forEach(inp => {
-    const val = inp.value.trim();
-    if (val) updates[inp.dataset.key] = val;
-  });
-  if (!Object.keys(updates).length) {
-    showToast("Nothing changed", "ok");
-    return;
-  }
-  try {
-    const res = await fetch(`${API}/api/env-vars/${modalService.type}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ updates }),
-    });
-    if (!res.ok) {
-      const e = await res.json();
-      throw new Error(e.detail || "Save failed");
-    }
-    showToast("Saved", "ok");
-    closeModal();
-    fetchServices();
-  } catch (e) {
-    showToast(e.message, "err");
-  }
-}
-
-function showToast(msg, type = "ok") {
-  let t = document.getElementById("toast");
-  if (!t) {
-    t = document.createElement("div");
-    t.id = "toast";
-    document.body.appendChild(t);
-  }
-  t.textContent = msg;
-  t.className = `toast ${type} show`;
-  clearTimeout(t._timer);
-  t._timer = setTimeout(() => { t.classList.remove("show"); }, 4000);
-}
-
-// ── Destinations ────────────────────────────────────────────────────────────
-
-let destinations = [];
-let loginPoll = null;
 const PROVIDERS = { google: "Google", microsoft: "Microsoft" };
+let services = [];
+let destinations = [];
+let authState = null;
+let openTile = null;      // "s:<service name>" or "d:<destination type>"
+let loginPoll = null;
+let refreshTimer = null;
+
+// ── helpers ────────────────────────────────────────────────────────────────
 
 async function api(path, options = {}) {
-  const res = await fetch(`${API}${path}`, options);
+  const res = await fetch(path, options);
   const body = await res.json().catch(() => ({}));
+  // A 401 anywhere but the auth endpoints means the session ended: back to sign-in.
+  if (res.status === 401 && !path.startsWith("/api/auth/")) {
+    authState = await api("/api/auth/status").catch(() => authState);
+    showAuthScreen();
+  }
   if (!res.ok) throw new Error(body.detail || `Request failed (${res.status})`);
   return body;
 }
@@ -256,471 +36,650 @@ const sendJson = (method, data) => ({
   body: JSON.stringify(data),
 });
 
-async function fetchDestinations() {
-  try {
-    destinations = await api("/api/destinations");
-    renderDestinations(destinations);
-    if (services.length) renderCards(services);  // upload results need destination names
-  } catch (e) {
-    document.getElementById("destination-grid").innerHTML =
-      `<p style="color:var(--error)">Failed to load destinations: ${esc(e.message)}</p>`;
-  }
+function toast(msg, isError = false) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.classList.toggle("err", isError);
+  t.hidden = false;
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => { t.hidden = true; }, isError ? 6000 : 3000);
 }
 
-function destField(dest, ev) {
-  return `
-    <div class="field">
-      <label>${esc(ev.label)}${ev.required ? ' <span class="required">*</span>' : ""}</label>
-      ${eyeInput(
-        `dest-field-${dest.type}-${ev.key}`, ev.key,
-        ev.secret,
-        ev.secret && ev.configured ? "(already set — leave blank to keep)" : "",
-        ev.secret ? "" : (ev.value || ""),
-        `data-dest="${esc(dest.type)}"`
-      )}
-      ${ev.description ? `<span class="hint">${esc(ev.description)}</span>` : ""}
-    </div>`;
+// In-page confirm (window.confirm can't be styled and blocks the page).
+function ask({ title, text, ok, code = "" }) {
+  const dlg = $("#confirm");
+  $("#c-title").textContent = title;
+  $("#c-text").textContent = text;
+  $("#c-ok").textContent = ok;
+  $("#c-code").textContent = code;
+  $("#c-code").hidden = !code;
+  dlg.returnValue = "";
+  dlg.showModal();
+  return new Promise(resolve =>
+    dlg.addEventListener("close", () => resolve(dlg.returnValue === "ok"), { once: true }));
+}
+
+function when(iso) {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(d).setHours(0, 0, 0, 0)) / 864e5);
+  if (days === 0) return `Today ${time}`;
+  if (days === 1) return `Yesterday ${time}`;
+  return `${d.toLocaleDateString([], { day: "numeric", month: "short" })} ${time}`;
+}
+
+function size(bytes) {
+  if (bytes == null) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+}
+
+const destName = type => destinations.find(d => d.type === type)?.display_name || type;
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+// ── status ─────────────────────────────────────────────────────────────────
+
+const missingSettings = svc => svc.env_vars.filter(ev => ev.required && !ev.configured);
+const failedUploads = lr => Object.entries(lr?.uploads || {}).filter(([, u]) => !u.ok);
+
+function serviceStatus(svc) {
+  if (!svc.enabled) return ["off", "Disabled"];
+  if (svc.is_running) return ["run", "Running"];
+  if (missingSettings(svc).length) return ["setup", "Needs setup"];
+  const lr = svc.last_result;
+  if (!lr) return ["never", "Not run yet"];
+  if (!lr.success) return ["fail", "Failed"];
+  if (failedUploads(lr).length) return ["fail", "Upload failed"];
+  return ["ok", "OK"];
+}
+
+function serviceProblem(svc) {
+  const lr = svc.last_result;
+  if (!svc.enabled || !lr) return "";
+  if (!lr.success) return lr.message;
+  return failedUploads(lr).map(([type, u]) => `Couldn't upload to ${destName(type)}. ${u.message}`).join(" ");
+}
+
+function destinationStatus(dest) {
+  if (!dest.enabled) return ["off", "Off"];
+  if (dest.login_provider && !dest.login?.connected) return ["setup", "Needs login"];
+  if (dest.env_vars.some(ev => ev.required && !ev.configured)) return ["setup", "Needs setup"];
+  const failed = services.some(s => s.enabled && s.last_result?.uploads?.[dest.type]?.ok === false);
+  return failed ? ["fail", "Failed"] : ["ok", "On"];
+}
+
+// ── rendering ──────────────────────────────────────────────────────────────
+
+function tileHead(name, [cls, word], open) {
+  return `<button class="tile-head" data-act="open" aria-expanded="${open}">
+    <span class="tile-name">${esc(name)}</span>
+    <span class="head-right"><span class="badge ${cls}">${esc(word)}</span><span class="chev" aria-hidden="true">▾</span></span>
+  </button>`;
+}
+
+function field(id, ev) {
+  const state = ev.configured ? ["set", "saved"] : ev.required ? ["missing", "missing"] : ["", "optional"];
+  const placeholder = ev.secret && ev.configured ? "Saved. Leave blank to keep it." : "";
+  return `<div class="field">
+    <label for="${esc(id)}">${esc(ev.label)} <span class="state ${state[0]}">${state[1]}</span></label>
+    <input id="${esc(id)}" data-key="${esc(ev.key)}" type="${ev.secret ? "password" : "text"}"
+      value="${ev.secret ? "" : esc(ev.value)}" placeholder="${esc(placeholder)}"
+      autocomplete="${ev.secret ? "new-password" : "off"}" spellcheck="false" />
+    ${ev.description ? `<div class="hint">${esc(ev.description)}</div>` : ""}
+  </div>`;
+}
+
+function fieldList(prefix, envVars) {
+  const basic = envVars.filter(ev => !ev.advanced).map(ev => field(`${prefix}-${ev.key}`, ev)).join("");
+  const advanced = envVars.filter(ev => ev.advanced).map(ev => field(`${prefix}-${ev.key}`, ev)).join("");
+  return `<div class="fields">${basic}</div>` +
+    (advanced ? `<details><summary>Advanced</summary><div class="fields">${advanced}</div></details>` : "");
+}
+
+function serviceBody(svc) {
+  const lr = svc.last_result;
+  const miss = missingSettings(svc);
+  const problem = serviceProblem(svc);
+  const facts = lr ? `<dl class="facts">
+      <dt>Last backup</dt><dd>${esc(when(lr.finished_at))}</dd>
+      ${lr.size_bytes != null ? `<dt>Size</dt><dd>${esc(size(lr.size_bytes))}</dd>` : ""}
+      <dt>Took</dt><dd>${Math.max(0, Math.round((new Date(lr.finished_at) - new Date(lr.started_at)) / 1000))} s</dd>
+      ${lr.uploads ? `<dt>Delivered to</dt><dd class="deliv">${Object.entries(lr.uploads).map(([type, u]) =>
+        `<span class="${u.ok ? "y" : "n"}">${u.ok ? "✓" : "✗"} ${esc(destName(type))}</span>`).join("")}</dd>` : ""}
+    </dl>`
+    : `<p class="desc">No backup yet.${miss.length ? ` Fill in ${miss.length === 1 ? "the missing setting" : "the missing settings"}, then run it once to check.` : ""}</p>`;
+  return `<div class="tile-body">
+    <div>
+      <p class="desc">${esc(svc.description)}</p>
+      ${problem ? `<p class="problem">${esc(problem)}</p>` : ""}
+      <h4>Last run</h4>
+      ${facts}
+    </div>
+    <div>
+      <h4>Settings${miss.length ? ` · ${miss.length} missing` : ""}</h4>
+      ${fieldList(`s-${svc.name}`, svc.env_vars)}
+    </div>
+    <div class="tile-foot">
+      <label class="switch"><input type="checkbox" data-act="svc-toggle" ${svc.enabled ? "checked" : ""} /> Back up on schedule</label>
+      <div class="spacer"></div>
+      <button class="btn quiet" data-act="svc-remove">Remove from dashboard</button>
+      <button class="btn" data-act="svc-save">Save</button>
+      <button class="btn primary" data-act="svc-run" ${!svc.enabled || svc.is_running || miss.length ? "disabled" : ""}>Back up now</button>
+    </div>
+  </div>`;
 }
 
 function loginSection(dest) {
   if (!dest.login_provider) return "";
   const who = PROVIDERS[dest.login_provider];
-  const t = esc(dest.type);
-  if (dest.login && dest.login.connected) {
-    const account = dest.login.account ? ` as ${esc(dest.login.account)}` : "";
-    return `
-      <div class="creds-status ok">&#10003; Connected${account}</div>
-      <button class="btn btn-secondary btn-sm" style="align-self:flex-start" onclick="disconnectDestination('${t}')">Disconnect</button>`;
+  if (dest.login?.connected) {
+    return `<p class="connected">Connected${dest.login.account ? ` as ${esc(dest.login.account)}` : ""}.</p>
+      <button class="btn" data-act="dst-logout">Disconnect</button>`;
   }
-  return `
-    <div class="creds-status missing">Not connected</div>
-    <button class="btn btn-primary btn-sm" style="align-self:flex-start" onclick="startLogin('${t}')"
-      ${dest.login_available ? "" : "disabled"}>Log in with ${who}</button>
-    ${dest.login_available ? "" : `<span class="hint">This build has no built-in ${who} app. Add your own under Advanced.</span>`}`;
+  return `<button class="btn primary" data-act="dst-login" ${dest.login_available ? "" : "disabled"}>Log in with ${who}</button>
+    ${dest.login_available ? "" : `<div class="hint">This build has no built-in ${who} app. Use your own under Advanced.</div>`}`;
 }
 
-function sftpKeySection() {
-  return `
-    <div class="field">
-      <label>SSH private key (optional)</label>
-      <textarea id="sftp-key" class="code-input" rows="3" spellcheck="false"
-        placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>
-      <span class="hint">Stored on this server, readable only by the app. Leave empty to log in with the password.</span>
-    </div>
-    <button class="btn btn-secondary btn-sm" style="align-self:flex-start" onclick="saveSftpKey()">Save key</button>`;
-}
-
-function googleOwnClientSection(dest) {
-  const callbackUri = `${window.location.origin}/api/destinations/google_drive/oauth/callback`;
-  return `
-    <details class="advanced">
-      <summary>Use your own Google OAuth client</summary>
-      <div class="creds-status ${dest.credentials_uploaded ? "ok" : "missing"}">
-        ${dest.credentials_uploaded ? "&#10003; client_secret.json uploaded" : "No client_secret.json uploaded"}
-      </div>
+function googleOwnClient(dest) {
+  const callback = `${location.origin}/api/destinations/google_drive/oauth/callback`;
+  return `<details>
+    <summary>Use your own Google OAuth client</summary>
+    <div class="fields">
+      <p class="muted small">${dest.credentials_uploaded ? "client_secret.json is uploaded." : "No client_secret.json uploaded yet."}</p>
       <div class="field">
-        <label>OAuth client secret JSON</label>
-        <textarea id="dest-credentials-google_drive" class="code-input" rows="4" spellcheck="false"
-          placeholder="Paste your client_secret.json contents here"></textarea>
-        <span class="hint">Google Cloud Console → APIs &amp; Services → Credentials → OAuth 2.0 Client IDs → Download JSON</span>
+        <label for="g-cred">OAuth client secret JSON</label>
+        <textarea id="g-cred" rows="4" spellcheck="false" placeholder="Paste your client_secret.json"></textarea>
+        <div class="hint">Google Cloud Console → APIs &amp; Services → Credentials → OAuth 2.0 Client IDs → Download JSON</div>
       </div>
-      <button class="btn btn-secondary btn-sm" style="align-self:flex-start" onclick="uploadCredentials()">Upload client_secret.json</button>
+      <div><button class="btn" data-act="g-upload">Upload client_secret.json</button></div>
       <div class="field">
         <label>Redirect URI to add to your OAuth client</label>
-        <code class="code-input">${esc(callbackUri)}</code>
-        <span class="hint">Google only accepts localhost or HTTPS addresses here.</span>
+        <code class="code-block">${esc(callback)}</code>
+        <div class="hint">Google only accepts localhost or HTTPS addresses here.</div>
       </div>
-      <button class="btn btn-secondary btn-sm" style="align-self:flex-start" onclick="authorizeGoogleDrive()"
-        ${dest.credentials_uploaded ? "" : "disabled"}>Authorize with my client</button>
-    </details>`;
+      <div><button class="btn" data-act="g-auth" ${dest.credentials_uploaded ? "" : "disabled"}>Authorize with my client</button></div>
+    </div>
+  </details>`;
 }
 
-function renderDestinations(dests) {
-  const grid = document.getElementById("destination-grid");
-  grid.innerHTML = dests.map(dest => {
-    const t = esc(dest.type);
-    const basic = dest.env_vars.filter(ev => !ev.advanced).map(ev => destField(dest, ev)).join("");
-    const advanced = dest.env_vars.filter(ev => ev.advanced).map(ev => destField(dest, ev)).join("");
-    return `
-      <div class="dest-card ${dest.enabled ? "enabled" : ""}" id="dest-card-${t}">
-        <div class="card-header">
-          <div class="card-title">${esc(dest.display_name)}</div>
-        </div>
-        <div class="card-desc">${esc(dest.description)}</div>
-        <div class="toggle-row">
-          <span class="toggle-label">Upload here</span>
-          <label class="toggle">
-            <input type="checkbox" ${dest.enabled ? "checked" : ""}
-              onchange="toggleDestination('${t}', '${esc(dest.enabled_key)}', this.checked)" />
-            <span class="toggle-track"></span>
-            <span class="toggle-thumb"></span>
-          </label>
-        </div>
-        ${loginSection(dest)}
-        <div class="env-form" id="dest-form-${t}">
-          ${basic}
-          ${advanced ? `<details class="advanced"><summary>Advanced</summary>${advanced}</details>` : ""}
-        </div>
-        ${dest.type === "sftp" ? sftpKeySection() : ""}
-        ${dest.type === "google_drive" ? googleOwnClientSection(dest) : ""}
-        <div class="save-row">
-          <button class="btn btn-secondary btn-sm" onclick="testDestination('${t}')">Test connection</button>
-          ${basic || advanced ? `<button class="btn btn-primary btn-sm" onclick="saveDestination('${t}')">Save</button>` : ""}
-        </div>
+function sftpKey() {
+  return `<details>
+    <summary>Log in with an SSH key instead</summary>
+    <div class="fields">
+      <div class="field">
+        <label for="sftp-key">SSH private key</label>
+        <textarea id="sftp-key" rows="3" spellcheck="false" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>
+        <div class="hint">Stored on this server, readable only by the app.</div>
+      </div>
+      <div><button class="btn" data-act="sftp-key">Save key</button></div>
+    </div>
+  </details>`;
+}
+
+function destinationBody(dest) {
+  const failures = services
+    .filter(s => s.enabled && s.last_result?.uploads?.[dest.type]?.ok === false)
+    .map(s => `${s.display_name}: ${s.last_result.uploads[dest.type].message}`);
+  return `<div class="tile-body">
+    <div>
+      <p class="desc">${esc(dest.description)}</p>
+      ${failures.map(f => `<p class="problem">${esc(f)}</p>`).join("")}
+      ${loginSection(dest)}
+    </div>
+    <div>
+      ${dest.env_vars.length ? `<h4>Settings</h4>${fieldList(`d-${dest.type}`, dest.env_vars)}` : ""}
+      ${dest.type === "sftp" ? sftpKey() : ""}
+      ${dest.type === "google_drive" ? googleOwnClient(dest) : ""}
+    </div>
+    <div class="tile-foot">
+      <label class="switch"><input type="checkbox" data-act="dst-toggle" ${dest.enabled ? "checked" : ""} /> Upload backups here</label>
+      <div class="spacer"></div>
+      <button class="btn" data-act="dst-test">Test connection</button>
+      ${dest.env_vars.length ? `<button class="btn primary" data-act="dst-save">Save</button>` : ""}
+    </div>
+  </div>`;
+}
+
+function renderSummary() {
+  const active = services.filter(s => s.enabled && !missingSettings(s).length);
+  const good = active.filter(s => serviceStatus(s)[0] === "ok").length;
+  const shipping = destinations.some(d => d.enabled);
+  const done = shipping ? "backed up and delivered" : "backed up";
+  $("#sum-title").textContent =
+    !services.length ? "Add the apps you run to start backing them up."
+      : !active.length ? "Nothing is ready to back up yet."
+        : good === active.length ? `All ${plural(active.length, "service")} ${done}.`
+          : `${good} of ${plural(active.length, "service")} ${done}.`;
+
+  const notes = [];
+  const link = (tile, label) => `<button class="link" data-goto="${esc(tile)}">${label}</button>`;
+  for (const s of services) {
+    const [cls] = serviceStatus(s);
+    if (cls === "fail") notes.push(`${esc(s.display_name)}: ${esc(serviceProblem(s).slice(0, 140))} ${link(`s:${s.name}`, "Open")}`);
+    if (cls === "setup") notes.push(`${esc(s.display_name)} needs ${plural(missingSettings(s).length, "setting")} before its first backup. ${link(`s:${s.name}`, "Set up")}`);
+  }
+  for (const d of destinations) {
+    if (destinationStatus(d)[0] === "setup") notes.push(`${esc(d.display_name)} is switched on but not connected. ${link(`d:${d.type}`, "Connect")}`);
+  }
+  const off = services.filter(s => !s.enabled).length;
+  if (off) notes.push(`${off} disabled.`);
+  if (services.length && !shipping) notes.push(`Backups stay on this server only. Switch on a destination below to keep a copy elsewhere.`);
+  $("#sum-list").innerHTML = notes.map(n => `<li>${n}</li>`).join("");
+}
+
+// Re-rendering replaces the open tile's inputs; carry over what the user was typing.
+function keepTyping(render) {
+  const typed = [...document.querySelectorAll(".tile.open input[id]:not([type=checkbox]), .tile.open textarea[id]")]
+    .map(el => [el.id, el.value]);
+  const focused = document.activeElement?.id;
+  render();
+  for (const [id, value] of typed) {
+    const el = document.getElementById(id);
+    if (el) el.value = value;
+  }
+  if (focused) document.getElementById(focused)?.focus();
+}
+
+function render() {
+  keepTyping(() => {
+    $("#svc-grid").innerHTML = services.map(svc => {
+      const key = `s:${svc.name}`, open = openTile === key;
+      return `<div class="tile ${open ? "open" : ""} ${svc.enabled ? "" : "is-off"}" data-tile="${esc(key)}">
+        ${tileHead(svc.display_name, serviceStatus(svc), open)}
+        ${open ? serviceBody(svc) : ""}
       </div>`;
-  }).join("");
+    }).join("") + `<button class="add-tile" data-act="catalog">+ Add a service</button>`;
+
+    $("#dst-grid").innerHTML = destinations.map(dest => {
+      const key = `d:${dest.type}`, open = openTile === key;
+      return `<div class="tile ${open ? "open" : ""} ${dest.enabled ? "" : "is-off"}" data-tile="${esc(key)}">
+        ${tileHead(dest.display_name, destinationStatus(dest), open)}
+        ${open ? destinationBody(dest) : ""}
+      </div>`;
+    }).join("");
+  });
+  renderSummary();
+  $("#svc-count").textContent = services.length ? plural(services.length, "app") : "";
+  $("#dst-count").textContent = `${destinations.filter(d => d.enabled).length} switched on`;
 }
 
-async function toggleDestination(destType, enabledKey, enabled) {
+async function refresh() {
   try {
-    await api(`/api/destinations/${destType}/env-vars`, sendJson("PUT", { updates: { [enabledKey]: enabled ? "true" : "false" } }));
-    const dest = destinations.find(d => d.type === destType);
-    showToast(`${dest ? dest.display_name : destType}: uploads ${enabled ? "on" : "off"}`, "ok");
-    fetchDestinations();
+    [services, destinations] = await Promise.all([api("/api/services"), api("/api/destinations")]);
+    render();
   } catch (e) {
-    showToast(e.message, "err");
-    fetchDestinations();
+    toast(`Couldn't load: ${e.message}`, true);
   }
 }
+
+function openAndShow(key) {
+  openTile = key;
+  render();
+  document.querySelector(`[data-tile="${CSS.escape(key)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+// ── services ───────────────────────────────────────────────────────────────
+
+function typedValues(tile) {
+  const updates = {};
+  tile.querySelectorAll("input[data-key]").forEach(inp => {
+    const value = inp.value.trim();
+    if (value) updates[inp.dataset.key] = value;
+  });
+  return updates;
+}
+
+async function saveService(svc, tile) {
+  const updates = typedValues(tile);
+  if (!Object.keys(updates).length) return toast("Nothing changed");
+  await api(`/api/env-vars/${svc.type}`, sendJson("PUT", { updates }));
+  tile.querySelectorAll("input[type=password]").forEach(inp => { inp.value = ""; });
+  toast("Saved");
+  await refresh();
+}
+
+async function setServiceEnabled(svc, enabled) {
+  if (!enabled && !await ask({
+    title: `Disable ${svc.display_name}?`,
+    text: "It won't be backed up on schedule until you turn it back on. Backups already made are kept.",
+    ok: "Disable",
+  })) return render();
+  await api(`/api/services/${svc.name}/enabled`, sendJson("PUT", { enabled }));
+  toast(`${svc.display_name} ${enabled ? "enabled" : "disabled"}`);
+  await refresh();
+}
+
+async function removeService(svc) {
+  if (!await ask({
+    title: `Remove ${svc.display_name} from the dashboard?`,
+    text: "Its backups stop. Backups already made and its saved settings are kept, so adding it back picks up where you left off.",
+    ok: "Remove",
+  })) return;
+  await api(`/api/services/${svc.name}`, { method: "DELETE" });
+  openTile = null;
+  toast(`${svc.display_name} removed. Add it back any time.`);
+  await refresh();
+}
+
+async function runService(svc) {
+  await api(`/api/services/${svc.name}/trigger`, { method: "POST" });
+  toast(`Backing up ${svc.display_name}…`);
+  setTimeout(refresh, 1500);
+}
+
+async function openCatalog() {
+  $("#cat-q").value = "";
+  openCatalog.items = await api("/api/catalog");
+  renderCatalog();
+  $("#catalog").showModal();
+}
+
+function renderCatalog() {
+  const q = $("#cat-q").value.trim().toLowerCase();
+  const items = (openCatalog.items || []).filter(c => !q || `${c.display_name} ${c.description}`.toLowerCase().includes(q));
+  $("#cat-list").innerHTML = items.map(c => `<div class="cat-item">
+      <div class="row"><span class="tile-name">${esc(c.display_name)}</span>
+        ${c.added ? `<span class="badge off">Added</span>` : `<button class="btn" data-add="${esc(c.type)}">Add</button>`}</div>
+      <p>${esc(c.description)}</p>
+      ${c.settings.length ? `<div class="needs">Needs: ${c.settings.map(esc).join(", ")}</div>` : ""}
+    </div>`).join("") || `<p class="muted">No app matches “${esc(q)}”.</p>`;
+}
+
+async function addService(type) {
+  await api("/api/services", sendJson("POST", { type }));
+  $("#catalog").close();
+  await refresh();
+  openAndShow(`s:${type}`);
+  toast(`${services.find(s => s.name === type)?.display_name || type} added. Fill in its settings.`);
+}
+
+// ── destinations ───────────────────────────────────────────────────────────
 
 // Returns true when something was saved.
-async function saveDestination(destType, quiet = false) {
-  const updates = {};
-  document.querySelectorAll(`#dest-form-${destType} input[data-key]`).forEach(inp => {
-    const val = inp.value.trim();
-    if (val) updates[inp.dataset.key] = val;
-  });
+async function saveDestination(dest, tile, quiet = false) {
+  const updates = typedValues(tile);
   if (!Object.keys(updates).length) {
-    if (!quiet) showToast("Nothing changed", "ok");
+    if (!quiet) toast("Nothing changed");
     return false;
   }
-  try {
-    await api(`/api/destinations/${destType}/env-vars`, sendJson("PUT", { updates }));
-    if (!quiet) showToast("Saved", "ok");
-    return true;
-  } catch (e) {
-    showToast(e.message, "err");
-    throw e;
+  await api(`/api/destinations/${dest.type}/env-vars`, sendJson("PUT", { updates }));
+  if (!quiet) {
+    toast("Saved");
+    await refresh();
   }
+  return true;
 }
 
-async function testDestination(destType) {
-  try {
-    await saveDestination(destType, true);
-    showToast("Testing connection…", "ok");
-    const r = await api(`/api/destinations/${destType}/test`, { method: "POST" });
-    if (r.ok) {
-      showToast(r.message, "ok");
-    } else if (r.fingerprint) {
-      const trust = confirm(
-        `First connection to this server. Its host key fingerprint is:\n\n${r.fingerprint}\n\n` +
-        "Trust it? To be sure, compare with `ssh-keygen -lf /etc/ssh/ssh_host_*_key.pub` on the server."
-      );
-      if (!trust) return;
-      await api(`/api/destinations/${destType}/env-vars`, sendJson("PUT", { updates: { SFTP_HOST_FINGERPRINT: r.fingerprint } }));
-      return testDestination(destType);
-    } else {
-      showToast(r.message, "err");
-    }
-    fetchDestinations();
-  } catch (e) {
-    showToast(e.message, "err");
-  }
+async function setDestinationEnabled(dest, enabled) {
+  if (!enabled && !await ask({
+    title: `Stop uploading to ${dest.display_name}?`,
+    text: "New backups stay on this server and any other destinations. Copies already uploaded are kept.",
+    ok: "Stop uploading",
+  })) return render();
+  await api(`/api/destinations/${dest.type}/env-vars`, sendJson("PUT", { updates: { [dest.enabled_key]: enabled ? "true" : "false" } }));
+  toast(`${dest.display_name}: uploads ${enabled ? "on" : "off"}`);
+  await refresh();
 }
 
-async function saveSftpKey() {
-  const box = document.getElementById("sftp-key");
-  const key = box ? box.value.trim() : "";
-  if (!key) { showToast("Paste a private key first", "err"); return; }
-  try {
-    await saveDestination("sftp", true);
-    await api("/api/destinations/sftp/key", sendJson("POST", { key }));
-    box.value = "";
-    showToast("SSH key saved", "ok");
-    fetchDestinations();
-  } catch (e) {
-    showToast(e.message, "err");
+async function testDestination(dest, tile) {
+  await saveDestination(dest, tile, true);
+  toast("Testing connection…");
+  const r = await api(`/api/destinations/${dest.type}/test`, { method: "POST" });
+  if (r.ok) {
+    toast(r.message);
+  } else if (r.fingerprint) {
+    const trust = await ask({
+      title: "Trust this server?",
+      text: "This is the first connection to this server. Check that its host key matches by running " +
+        "ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub on the server.",
+      code: r.fingerprint,
+      ok: "Trust and connect",
+    });
+    if (!trust) return;
+    await api(`/api/destinations/${dest.type}/env-vars`, sendJson("PUT", { updates: { SFTP_HOST_FINGERPRINT: r.fingerprint } }));
+    return testDestination(dest, tile);
+  } else {
+    toast(r.message, true);
   }
+  await refresh();
 }
 
 function setLoginStatus(text, isError = false) {
-  const el = document.getElementById("login-status");
+  const el = $("#login-status");
   el.textContent = text;
-  el.style.color = isError ? "var(--error)" : "";
+  el.classList.toggle("status-error", isError);
 }
 
-async function startLogin(destType) {
-  const dest = destinations.find(d => d.type === destType);
+async function startLogin(dest, tile) {
   const who = PROVIDERS[dest.login_provider];
-  try {
-    await saveDestination(destType, true);
-    const login = await api(`/api/destinations/${destType}/login`, { method: "POST" });
-    const host = new URL(login.verification_url).host;
-    document.getElementById("login-title").textContent = `Log in with ${who}`;
-    document.getElementById("login-steps").textContent =
-      `Open ${host} on any device, enter this code, and sign in with your ${who} account.`;
-    document.getElementById("login-code").textContent = login.user_code;
-    const link = document.getElementById("login-link");
-    link.href = login.verification_url;
-    link.textContent = `Open ${host}`;
-    setLoginStatus("Waiting for you to finish signing in…");
-    document.getElementById("login-modal").classList.add("open");
-    clearInterval(loginPoll);
-    loginPoll = setInterval(async () => {
-      try {
-        const s = await api(`/api/destinations/logins/${login.id}`);
-        if (s.status === "connected") {
-          closeLogin();
-          showToast(`${dest.display_name} connected${s.message ? ` as ${s.message}` : ""}`, "ok");
-          fetchDestinations();
-        } else if (s.status === "failed") {
-          clearInterval(loginPoll);
-          setLoginStatus(s.message, true);
-        }
-      } catch (e) {
-        clearInterval(loginPoll);
-        setLoginStatus(e.message, true);
-      }
-    }, 3000);
-  } catch (e) {
-    showToast(e.message, "err");
-  }
-}
-
-function closeLogin() {
+  await saveDestination(dest, tile, true);
+  const login = await api(`/api/destinations/${dest.type}/login`, { method: "POST" });
+  const host = new URL(login.verification_url).host;
+  $("#login-title").textContent = `Log in with ${who}`;
+  $("#login-steps").textContent = `Open ${host} on any device, enter this code, and sign in with your ${who} account.`;
+  $("#login-code").textContent = login.user_code;
+  $("#login-link").href = login.verification_url;
+  $("#login-link").textContent = `Open ${host}`;
+  setLoginStatus("Waiting for you to finish signing in…");
+  $("#login-modal").showModal();
   clearInterval(loginPoll);
-  document.getElementById("login-modal").classList.remove("open");
+  loginPoll = setInterval(async () => {
+    try {
+      const s = await api(`/api/destinations/logins/${login.id}`);
+      if (s.status === "connected") {
+        $("#login-modal").close();
+        toast(`${dest.display_name} connected${s.message ? ` as ${s.message}` : ""}`);
+        refresh();
+      } else if (s.status === "failed") {
+        clearInterval(loginPoll);
+        setLoginStatus(s.message, true);
+      }
+    } catch (e) {
+      clearInterval(loginPoll);
+      setLoginStatus(e.message, true);
+    }
+  }, 3000);
 }
 
 async function copyLoginCode() {
-  const code = document.getElementById("login-code").textContent;
   try {
-    await navigator.clipboard.writeText(code);
-    showToast("Code copied", "ok");
+    await navigator.clipboard.writeText($("#login-code").textContent);
+    toast("Code copied");
   } catch {
     // The clipboard API needs HTTPS or localhost; on a LAN IP select the code instead.
-    getSelection().selectAllChildren(document.getElementById("login-code"));
-    showToast("Code selected: press Ctrl+C / ⌘C", "ok");
+    getSelection().selectAllChildren($("#login-code"));
+    toast("Code selected: press Ctrl+C or ⌘C");
   }
 }
 
-async function disconnectDestination(destType) {
-  const dest = destinations.find(d => d.type === destType);
-  if (!confirm(`Disconnect ${dest.display_name}? Backups stop uploading there until you log in again.`)) return;
-  try {
-    await api(`/api/destinations/${destType}/login`, { method: "DELETE" });
-    showToast(`${dest.display_name} disconnected`, "ok");
-    fetchDestinations();
-  } catch (e) {
-    showToast(e.message, "err");
-  }
+async function disconnect(dest) {
+  if (!await ask({
+    title: `Disconnect ${dest.display_name}?`,
+    text: "Backups stop uploading there until you log in again. Copies already there are kept.",
+    ok: "Disconnect",
+  })) return;
+  await api(`/api/destinations/${dest.type}/login`, { method: "DELETE" });
+  toast(`${dest.display_name} disconnected`);
+  await refresh();
 }
 
-async function uploadCredentials() {
-  const textarea = document.getElementById("dest-credentials-google_drive");
-  const json_content = textarea ? textarea.value.trim() : "";
-  if (!json_content) { showToast("Paste credentials JSON first", "err"); return; }
-  try {
-    const data = await api("/api/destinations/google_drive/credentials", sendJson("POST", { json_content }));
-    showToast(`Credentials saved (client_id: ${data.client_id})`, "ok");
-    textarea.value = "";
-    fetchDestinations();
-  } catch (e) {
-    showToast(e.message, "err");
-  }
+async function saveSftpKey(dest, tile) {
+  const box = $("#sftp-key");
+  const key = box.value.trim();
+  if (!key) return toast("Paste a private key first", true);
+  await saveDestination(dest, tile, true);
+  await api("/api/destinations/sftp/key", sendJson("POST", { key }));
+  box.value = "";
+  toast("SSH key saved");
+  await refresh();
 }
 
-async function authorizeGoogleDrive() {
-  try {
-    const { auth_url } = await api("/api/destinations/google_drive/oauth/start",
-      sendJson("POST", { redirect_base: window.location.origin }));
-    window.open(auth_url, "_blank", "noopener,noreferrer");
-    showToast("Finish signing in in the new tab, then come back here", "ok");
-    let polls = 0;
-    const poll = setInterval(async () => {
-      if (++polls > 60) { clearInterval(poll); return; }
-      const dests = await api("/api/destinations").catch(() => null);
-      const gd = dests && dests.find(d => d.type === "google_drive");
-      if (gd && gd.login && gd.login.connected) {
-        clearInterval(poll);
-        destinations = dests;
-        renderDestinations(dests);
-        showToast("Google Drive connected", "ok");
-      }
-    }, 3000);
-  } catch (e) {
-    showToast(e.message, "err");
-  }
+async function uploadGoogleCredentials() {
+  const box = $("#g-cred");
+  const json_content = box.value.trim();
+  if (!json_content) return toast("Paste the client_secret.json contents first", true);
+  const data = await api("/api/destinations/google_drive/credentials", sendJson("POST", { json_content }));
+  box.value = "";
+  toast(`Saved (client ID ${data.client_id})`);
+  await refresh();
 }
 
-// ── Settings ─────────────────────────────────────────────────────────────────
-
-async function fetchSettings() {
-  try {
-    const res = await fetch(`${API}/api/settings`);
-    if (!res.ok) throw new Error("Failed to fetch settings");
-    const s = await res.json();
-    renderSettings(s);
-  } catch (e) {
-    document.getElementById("settings-panel").innerHTML =
-      `<p style="color:var(--error)">Failed to load settings: ${esc(e.message)}</p>`;
-  }
-}
-
-function renderSettings(s) {
-  document.getElementById("settings-panel").innerHTML = `
-    <div class="dest-card" style="max-width:420px">
-      <div class="field">
-        <label>Repeat every N hours <span style="color:var(--muted);font-weight:400">(0 = use daily time below)</span></label>
-        <input type="number" id="setting-interval-hours" value="${esc(s.interval_hours)}" min="0" step="1"
-          style="max-width:120px" />
-        <span class="hint">e.g. 6 = run every 6 hours. Set to 0 to run once daily at a fixed time.</span>
-      </div>
-      <div class="field">
-        <label>Daily backup time (HH:MM, 24-hour) <span style="color:var(--muted);font-weight:400">— used when interval = 0</span></label>
-        <input type="text" id="setting-daily-at" value="${esc(s.daily_at)}" placeholder="03:30"
-          autocomplete="off" spellcheck="false" style="max-width:120px" />
-      </div>
-      <div class="field">
-        <label>Local retention (days to keep old backups)</label>
-        <input type="number" id="setting-keep-days" value="${esc(s.keep_days)}" min="1" step="1"
-          style="max-width:120px" />
-      </div>
-      <div class="field">
-        <label>Copies to keep at each destination (per service)</label>
-        <input type="number" id="setting-remote-keep-count" value="${esc(s.remote_keep_count ?? 3)}" min="1" step="1"
-          style="max-width:120px" />
-        <span class="hint">After each upload the oldest copies beyond this count are removed. Files you put there yourself are never touched.</span>
-      </div>
-      <div class="toggle-row">
-        <span class="toggle-label">Run backup on container start</span>
-        <label class="toggle">
-          <input type="checkbox" id="setting-run-on-start" ${s.run_on_start ? "checked" : ""} />
-          <span class="toggle-track"></span>
-          <span class="toggle-thumb"></span>
-        </label>
-      </div>
-      <div class="save-row">
-        <button class="btn btn-primary btn-sm" onclick="saveSettings()">Save</button>
-      </div>
-    </div>
-  `;
-}
-
-async function saveSettings() {
-  const daily_at = document.getElementById("setting-daily-at").value.trim();
-  const keep_days = parseInt(document.getElementById("setting-keep-days").value, 10);
-  const remote_keep_count = parseInt(document.getElementById("setting-remote-keep-count").value, 10);
-  const interval_hours = parseInt(document.getElementById("setting-interval-hours").value, 10) || 0;
-  const run_on_start = document.getElementById("setting-run-on-start").checked;
-
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(daily_at)) {
-    showToast("Invalid time — use HH:MM (e.g. 03:30)", "err");
-    return;
-  }
-  if (!keep_days || keep_days < 1) {
-    showToast("Retention must be at least 1 day", "err");
-    return;
-  }
-  if (!remote_keep_count || remote_keep_count < 1) {
-    showToast("Copies to keep must be at least 1", "err");
-    return;
-  }
-  try {
-    const res = await fetch(`${API}/api/settings`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ daily_at, interval_hours, run_on_start, keep_days, remote_keep_count }),
-    });
-    if (!res.ok) {
-      const e = await res.json();
-      throw new Error(e.detail || "Save failed");
+async function authorizeOwnGoogleClient() {
+  const { auth_url } = await api("/api/destinations/google_drive/oauth/start",
+    sendJson("POST", { redirect_base: location.origin }));
+  window.open(auth_url, "_blank", "noopener,noreferrer");
+  toast("Finish signing in in the new tab, then come back here");
+  let polls = 0;
+  const poll = setInterval(async () => {
+    if (++polls > 60) return clearInterval(poll);
+    const dests = await api("/api/destinations").catch(() => null);
+    if (dests?.find(d => d.type === "google_drive")?.login?.connected) {
+      clearInterval(poll);
+      toast("Google Drive connected");
+      refresh();
     }
-    showToast("Settings saved", "ok");
-  } catch (e) {
-    showToast(e.message, "err");
-  }
+  }, 3000);
 }
 
-// ── Sign-in ─────────────────────────────────────────────────────────────────
+// ── settings ───────────────────────────────────────────────────────────────
 
-let authState = null;
-let appStarted = false;
-
-// Any API call answered with 401 (session expired, signed out elsewhere) brings
-// the sign-in screen back instead of failing silently.
-const nativeFetch = window.fetch.bind(window);
-window.fetch = async (...args) => {
-  const res = await nativeFetch(...args);
-  if (res.status === 401 && !String(args[0]).includes("/api/auth/")) showAuthScreen();
-  return res;
-};
-
-async function checkAuth() {
-  try {
-    authState = await api("/api/auth/status");
-  } catch (e) {
-    showToast("Can't reach the server: " + e.message, "err");
-    return;
-  }
-  if (authState.authenticated) startApp();
-  else showAuthScreen();
+function showSchedule(s) {
+  $("#next-run").innerHTML = s.interval_hours > 0
+    ? `Backs up every <b>${esc(plural(s.interval_hours, "hour"))}</b>`
+    : `Backs up daily at <b>${esc(s.daily_at)}</b>`;
 }
+
+async function openSettings() {
+  const s = await api("/api/settings");
+  showSchedule(s);
+  $("#setting-daily-at").value = s.daily_at;
+  $("#setting-interval-hours").value = s.interval_hours;
+  $("#setting-keep-days").value = s.keep_days;
+  $("#setting-remote-keep-count").value = s.remote_keep_count ?? 3;
+  $("#setting-run-on-start").checked = Boolean(s.run_on_start);
+  $("#auth-mode").value = authState.mode;
+  $("#auth-proxies").value = authState.trusted_proxies;
+  $("#auth-header").value = authState.proxy_header;
+  showAuthModeHint();
+  $("#settings-dialog").showModal();
+}
+
+async function saveSchedule(e) {
+  e.preventDefault();
+  const body = {
+    daily_at: $("#setting-daily-at").value,
+    interval_hours: parseInt($("#setting-interval-hours").value, 10) || 0,
+    keep_days: parseInt($("#setting-keep-days").value, 10),
+    remote_keep_count: parseInt($("#setting-remote-keep-count").value, 10),
+    run_on_start: $("#setting-run-on-start").checked,
+  };
+  await api("/api/settings", sendJson("PUT", body));
+  showSchedule(body);
+  toast("Schedule saved");
+}
+
+function showAuthModeHint() {
+  const mode = $("#auth-mode").value;
+  $("#proxy-fields").hidden = mode !== "proxy";
+  $("#auth-mode-hint").textContent = {
+    password: "Recommended. Sessions last up to 30 days; 5 wrong passwords lock that device out for 15 minutes.",
+    proxy: "If the proxy addresses are wrong you'll be locked out; set AUTH_MODE=password in .env to recover.",
+    off: "Anyone who can reach this page can read and change every credential here. Only use on a network nobody else can reach.",
+  }[mode];
+}
+
+async function saveAuthSettings(e) {
+  e.preventDefault();
+  const mode = $("#auth-mode").value;
+  if (mode === "off" && !await ask({
+    title: "Turn off sign-in?",
+    text: "Anyone who can reach this page gets full access to every saved credential.",
+    ok: "Turn off sign-in",
+  })) return;
+  await api("/api/auth/settings", sendJson("PUT", {
+    mode,
+    trusted_proxies: $("#auth-proxies").value,
+    proxy_header: $("#auth-header").value,
+    current_password: $("#auth-current").value,
+  }));
+  $("#auth-current").value = "";
+  toast("Sign-in settings saved");
+  authState = await api("/api/auth/status");
+  if (!authState.authenticated) {
+    $("#settings-dialog").close();
+    showAuthScreen();
+  }
+  $("#logout-btn").hidden = authState.mode !== "password";
+}
+
+async function changePassword() {
+  const next = $("#auth-new").value;
+  if (next !== $("#auth-new-confirm").value) return toast("The new passwords don't match", true);
+  await api("/api/auth/password", sendJson("POST", {
+    current_password: $("#auth-current").value,
+    new_password: next,
+  }));
+  for (const id of ["#auth-current", "#auth-new", "#auth-new-confirm"]) $(id).value = "";
+  toast("Password changed. Other devices are signed out.");
+}
+
+// ── sign-in ────────────────────────────────────────────────────────────────
 
 function showAuthScreen() {
-  const setup = Boolean(authState && authState.setup_required);
-  const proxy = authState && authState.mode === "proxy";
-  document.getElementById("auth-intro").textContent = proxy
+  clearInterval(refreshTimer);
+  document.querySelectorAll("dialog[open]").forEach(d => d.close());
+  const setup = Boolean(authState?.setup_required);
+  const proxy = authState?.mode === "proxy";
+  $("#app").hidden = true;
+  $("#top-nav").hidden = true;
+  $("#auth-heading").textContent = setup ? "Create the admin password" : "Sign in";
+  $("#auth-intro").textContent = proxy
     ? "This app expects your sign-in proxy (Authelia, Authentik…) to log you in. Open it through the proxy."
     : setup
-      ? "Create the admin password. You need the one-time setup code from the server logs."
+      ? "You need the one-time setup code from the server logs."
       : "Enter the admin password.";
-  document.getElementById("setup-code-field").hidden = !setup;
-  document.getElementById("auth-confirm-field").hidden = !setup;
-  const pw = document.getElementById("auth-password");
-  pw.autocomplete = setup ? "new-password" : "current-password";
-  pw.closest(".field").hidden = proxy;
-  document.getElementById("auth-submit").hidden = proxy;
-  document.getElementById("auth-submit").textContent = setup ? "Create password" : "Sign in";
-  document.getElementById("auth-error").textContent = "";
-  document.getElementById("auth-screen").hidden = false;
-  (setup ? document.getElementById("auth-setup-code") : pw).focus();
+  $("#setup-code-field").hidden = !setup;
+  $("#auth-confirm-field").hidden = !setup;
+  $("#auth-password-field").hidden = proxy;
+  $("#auth-password").required = !proxy;
+  $("#auth-password").autocomplete = setup ? "new-password" : "current-password";
+  $("#auth-submit").hidden = proxy;
+  $("#auth-submit").textContent = setup ? "Create password" : "Sign in";
+  $("#auth-error").textContent = "";
+  $("#auth-screen").hidden = false;
+  (setup ? $("#auth-setup-code") : $("#auth-password")).focus();
 }
 
 async function submitAuth(e) {
   e.preventDefault();
   const setup = authState.setup_required;
-  const password = document.getElementById("auth-password").value;
-  const error = document.getElementById("auth-error");
-  if (setup && password !== document.getElementById("auth-confirm").value) {
-    error.textContent = "The passwords don't match.";
+  const password = $("#auth-password").value;
+  if (setup && password !== $("#auth-confirm").value) {
+    $("#auth-error").textContent = "The passwords don't match.";
     return;
   }
-  const body = setup
-    ? { setup_code: document.getElementById("auth-setup-code").value, password }
-    : { password };
   try {
-    await api(setup ? "/api/auth/setup" : "/api/auth/login", sendJson("POST", body));
+    await api(setup ? "/api/auth/setup" : "/api/auth/login",
+      sendJson("POST", setup ? { setup_code: $("#auth-setup-code").value, password } : { password }));
   } catch (err) {
-    error.textContent = err.message;
+    $("#auth-error").textContent = err.message;
     return;
   }
-  document.getElementById("auth-form").reset();
-  document.getElementById("auth-screen").hidden = true;
+  $("#auth-form").reset();
   authState = await api("/api/auth/status");
   startApp();
 }
 
 function startApp() {
-  document.getElementById("logout-btn").hidden = authState.mode !== "password";
-  fetchServices();
-  fetchDestinations();
-  fetchSettings();
-  renderSecurity();
-  if (!appStarted) {
-    appStarted = true;
-    setInterval(fetchServices, 15000);
-  }
+  $("#auth-screen").hidden = true;
+  $("#app").hidden = false;
+  $("#top-nav").hidden = false;
+  $("#logout-btn").hidden = authState.mode !== "password";
+  api("/api/settings").then(showSchedule).catch(() => {});
+  refresh();
+  clearInterval(refreshTimer);
+  refreshTimer = setInterval(refresh, 15000);
 }
 
 async function logout() {
@@ -728,118 +687,82 @@ async function logout() {
   location.reload();
 }
 
-function renderSecurity() {
-  const s = authState;
-  const option = (value, label) => `<option value="${value}" ${s.mode === value ? "selected" : ""}>${label}</option>`;
-  document.getElementById("security-panel").innerHTML = `
-    <div class="dest-card" style="max-width:420px">
-      <div class="card-title">Sign-in</div>
-      <div class="field">
-        <label for="auth-mode">How people sign in</label>
-        <select id="auth-mode" onchange="toggleProxyFields()">
-          ${option("password", "Admin password")}
-          ${option("proxy", "My sign-in proxy (Authelia, Authentik…)")}
-          ${option("off", "No sign-in")}
-        </select>
-        <span class="hint" id="auth-mode-hint"></span>
-      </div>
-      <div id="proxy-fields">
-        <div class="field">
-          <label for="auth-proxies">Proxy IP addresses</label>
-          <input id="auth-proxies" value="${esc(s.trusted_proxies)}" placeholder="10.0.0.5, 172.18.0.0/16" spellcheck="false" />
-          <span class="hint">Only requests from these addresses may name the user. Use your proxy's IP.</span>
-        </div>
-        <div class="field">
-          <label for="auth-header">User header</label>
-          <input id="auth-header" value="${esc(s.proxy_header)}" spellcheck="false" />
-        </div>
-      </div>
-      <div class="field">
-        <label for="auth-current">Current admin password</label>
-        <input id="auth-current" type="password" autocomplete="current-password" />
-        <span class="hint">Needed to change any of these settings.</span>
-      </div>
-      <div class="save-row">
-        <button class="btn btn-primary btn-sm" onclick="saveAuthSettings()">Save sign-in settings</button>
-      </div>
-      <details class="advanced">
-        <summary>Change admin password</summary>
-        <div class="field">
-          <label for="auth-new">New password</label>
-          <input id="auth-new" type="password" autocomplete="new-password" />
-        </div>
-        <div class="field">
-          <label for="auth-new-confirm">Repeat new password</label>
-          <input id="auth-new-confirm" type="password" autocomplete="new-password" />
-          <span class="hint">At least 12 characters. Other devices are signed out.</span>
-        </div>
-        <button class="btn btn-secondary btn-sm" style="align-self:flex-start" onclick="changePassword()">Change password</button>
-      </details>
-    </div>`;
-  toggleProxyFields();
-}
-
-function toggleProxyFields() {
-  const mode = document.getElementById("auth-mode").value;
-  document.getElementById("proxy-fields").hidden = mode !== "proxy";
-  document.getElementById("auth-mode-hint").textContent = {
-    password: "Recommended. Sessions last up to 30 days; 5 wrong passwords lock that device out for 15 minutes.",
-    proxy: "If the proxy addresses are wrong you'll be locked out; set AUTH_MODE=password in .env to recover.",
-    off: "Anyone who can reach this page can read and change every credential here. Only use on a network nobody else can reach.",
-  }[mode];
-}
-
-async function saveAuthSettings() {
-  const mode = document.getElementById("auth-mode").value;
-  if (mode === "off" && !confirm("Turn off sign-in? Anyone who can reach this page gets full access.")) return;
+async function checkAuth() {
   try {
-    await api("/api/auth/settings", sendJson("PUT", {
-      mode,
-      trusted_proxies: document.getElementById("auth-proxies").value,
-      proxy_header: document.getElementById("auth-header").value,
-      current_password: document.getElementById("auth-current").value,
-    }));
-    showToast("Sign-in settings saved", "ok");
     authState = await api("/api/auth/status");
-    if (!authState.authenticated) { showAuthScreen(); return; }
-    startApp();
   } catch (e) {
-    showToast(e.message, "err");
-  }
-}
-
-async function changePassword() {
-  const next = document.getElementById("auth-new").value;
-  if (next !== document.getElementById("auth-new-confirm").value) {
-    showToast("The new passwords don't match", "err");
+    toast(`Can't reach the server: ${e.message}`, true);
     return;
   }
-  try {
-    await api("/api/auth/password", sendJson("POST", {
-      current_password: document.getElementById("auth-current").value,
-      new_password: next,
-    }));
-    showToast("Password changed. Other devices are signed out.", "ok");
-    renderSecurity();
-  } catch (e) {
-    showToast(e.message, "err");
-  }
+  if (authState.authenticated) startApp();
+  else showAuthScreen();
 }
 
-// ── Init ─────────────────────────────────────────────────────────────────────
+// ── events ─────────────────────────────────────────────────────────────────
+
+const tileActions = {
+  "svc-save": saveService,
+  "svc-run": runService,
+  "svc-remove": removeService,
+  "dst-save": (dest, tile) => saveDestination(dest, tile),
+  "dst-test": testDestination,
+  "dst-login": startLogin,
+  "dst-logout": disconnect,
+  "sftp-key": saveSftpKey,
+  "g-upload": uploadGoogleCredentials,
+  "g-auth": authorizeOwnGoogleClient,
+};
+
+function tileItem(tile) {
+  const [kind, id] = tile.dataset.tile.split(/:(.*)/);
+  return kind === "s" ? services.find(s => s.name === id) : destinations.find(d => d.type === id);
+}
+
+// Every action reports its own failure as a toast.
+const guarded = fn => (...args) => Promise.resolve(fn(...args)).catch(e => toast(e.message, true));
+
+document.addEventListener("click", guarded(async e => {
+  const el = e.target.closest("[data-act], [data-goto], [data-add], [data-close]");
+  if (!el) return;
+  if (el.dataset.close !== undefined) return el.closest("dialog").close();
+  if (el.dataset.goto) return openAndShow(el.dataset.goto);
+  if (el.dataset.add) return addService(el.dataset.add);
+  const act = el.dataset.act;
+  if (act === "catalog") return openCatalog();
+  if (act === "svc-toggle" || act === "dst-toggle") return;   // handled on change
+  const tile = el.closest(".tile");
+  if (act === "open") {
+    openTile = openTile === tile.dataset.tile ? null : tile.dataset.tile;
+    return render();
+  }
+  const item = tileItem(tile);
+  if (item && tileActions[act]) await tileActions[act](item, tile);
+}));
+
+document.addEventListener("change", guarded(async e => {
+  const act = e.target.dataset.act;
+  if (act !== "svc-toggle" && act !== "dst-toggle") return;
+  const item = tileItem(e.target.closest(".tile"));
+  if (act === "svc-toggle") await setServiceEnabled(item, e.target.checked);
+  else await setDestinationEnabled(item, e.target.checked);
+}));
 
 document.addEventListener("DOMContentLoaded", () => {
+  $("#auth-form").addEventListener("submit", submitAuth);
+  $("#logout-btn").addEventListener("click", logout);
+  $("#run-all").addEventListener("click", guarded(async () => {
+    const r = await api("/api/services/trigger-all", { method: "POST" });
+    const n = r.triggered.length;
+    toast(n ? `Backing up ${plural(n, "service")}…` : "Nothing to back up: no enabled service is idle", !n);
+    if (n) setTimeout(refresh, 1500);
+  }));
+  $("#open-settings").addEventListener("click", guarded(openSettings));
+  $("#schedule-form").addEventListener("submit", guarded(saveSchedule));
+  $("#security-form").addEventListener("submit", guarded(saveAuthSettings));
+  $("#auth-mode").addEventListener("change", showAuthModeHint);
+  $("#change-password").addEventListener("click", guarded(changePassword));
+  $("#copy-code").addEventListener("click", copyLoginCode);
+  $("#login-modal").addEventListener("close", () => clearInterval(loginPoll));
+  $("#cat-q").addEventListener("input", renderCatalog);
   checkAuth();
-
-  document.getElementById("auth-form").addEventListener("submit", submitAuth);
-  document.getElementById("logout-btn").addEventListener("click", logout);
-  document.getElementById("refresh-btn").addEventListener("click", fetchServices);
-
-  document.getElementById("config-modal").addEventListener("click", e => {
-    if (e.target === e.currentTarget) closeModal();
-  });
-
-  document.addEventListener("keydown", e => {
-    if (e.key === "Escape") { closeModal(); closeLogin(); }
-  });
 });

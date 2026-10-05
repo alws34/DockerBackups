@@ -16,7 +16,7 @@ vanilla JS GUI, Python 3.12 Alpine. Workers produce files; destinations upload t
 - The container runs as non-root (uid 1000 / `PUID`) with a read-only root filesystem and all
   capabilities dropped. The app may only write to the bind mounts (`/backups`, `/logs`,
   `/state`, `/config`, `/app-env/.env`), `/tmp` and `$HOME` (both tmpfs).
-- All tests must pass (78 at last count). Run `PYTHONPATH=. pytest tests/ -x -q` before any commit.
+- All tests must pass (79 at last count). Run `PYTHONPATH=. pytest tests/ -x -q` before any commit.
 
 ## Stack
 
@@ -51,7 +51,7 @@ app/
     auth.py         — admin password (scrypt), sessions, lockout, proxy/off modes
     security.py     — Host allow-list, cross-site write blocking, security headers
     routes/         — one file per API group (services, logs, env_vars, destinations, settings)
-    static/         — index.html, app.js, style.css (Glassmorphism dark theme)
+    static/         — index.html, app.js, style.css (no build step, strict CSP: no inline JS or CSS)
 config/
   services.json     — schedule, retention, service list, destination config (tracked in git)
 tests/              — pytest unit tests; no live network or Docker required
@@ -63,7 +63,7 @@ tests/              — pytest unit tests; no live network or Docker required
 2. Set class attributes: `worker_type`, `display_name`, `description`, `env_var_specs`.
 3. Implement `run(context: BackupContext) -> BackupResult`.
 4. Register in `app/core/registry.py → create_default_registry()`.
-5. Add entry to `config/services.json`.
+5. Users add it from the GUI's app picker (**+ Add a service**); no `services.json` edit needed.
 
 The GUI loads metadata dynamically — no frontend changes needed.
 

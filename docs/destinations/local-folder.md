@@ -23,7 +23,7 @@ yours to configure, using your own credentials.
      - /mnt/nas/homelab-takeout:/mnt/nas/homelab-takeout
    ```
 
-3. Click **Test connection**, then switch on **Upload here**.
+3. Click **Test connection**, then switch on **Upload backups here**.
 
 **Without Docker (systemd install):** the service is sandboxed and can only
 write to its own folders, so allow the destination folder once:

@@ -26,9 +26,12 @@ SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "no-referrer",
-    # ponytail: no script-src/style-src yet — the GUI still uses inline onclick handlers and
-    # style attributes. Tighten to "script-src 'self'" once the UI redesign removes them.
-    "Content-Security-Policy": "frame-ancestors 'none'; object-src 'none'; base-uri 'none'",
+    # Everything the GUI loads is served by the app itself; no inline scripts or styles.
+    "Content-Security-Policy": (
+        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+        "font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; "
+        "object-src 'none'; base-uri 'none'"
+    ),
 }
 
 

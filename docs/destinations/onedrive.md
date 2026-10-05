@@ -14,7 +14,7 @@ folder and nothing else in your OneDrive.
 2. Open `microsoft.com/devicelogin` on any device, enter the code shown, and
    sign in with your Microsoft account.
 3. The dialog closes by itself once Microsoft confirms.
-4. Switch on **Upload here** and click **Test connection**.
+4. Switch on **Upload backups here** and click **Test connection**.
 
 You stay connected as long as backups keep running: Microsoft refresh tokens
 expire only after 90 days without use, and every upload renews them. The

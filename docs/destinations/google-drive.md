@@ -15,7 +15,7 @@ files and folders it created itself, never the rest of your Drive.
    fine), enter the code, and sign in with your Google account.
 3. The dialog closes by itself once Google confirms. The card shows
    **Connected as you@gmail.com**.
-4. Switch on **Upload here** and click **Test connection**.
+4. Switch on **Upload backups here** and click **Test connection**.
 
 You stay connected: the app keeps a refresh token (stored with owner-only
 permissions, never shown in the GUI) and gets new access tokens by itself.

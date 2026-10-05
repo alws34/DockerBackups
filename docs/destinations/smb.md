@@ -9,7 +9,7 @@ mounted on the host or inside the container.
 1. On your NAS, create (or pick) a share and a user with write access to it.
 2. In **Destinations → SMB share**, fill in **Server**, **Share**, an optional
    **Folder in share**, **Username** and **Password**.
-3. Click **Test connection**, then switch on **Upload here**.
+3. Click **Test connection**, then switch on **Upload backups here**.
 
 Each service gets a sub-folder: `\\server\share\<folder>\<service>\`.
 

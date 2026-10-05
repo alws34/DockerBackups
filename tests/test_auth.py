@@ -184,6 +184,8 @@ async def test_unauthenticated_responses_still_get_security_headers(make_app):
     status, headers, _ = await call(app, "GET", "/api/settings")
     assert status == 401
     assert headers["x-frame-options"] == "DENY"
+    assert "script-src 'self'" in headers["content-security-policy"]
+    assert (await call(app, "GET", "/docs"))[0] == 404
     # The rebinding check runs before the login check.
     status, _, _ = await call(app, "GET", "/api/settings", headers={"host": "evil.example"})
     assert status == 400
