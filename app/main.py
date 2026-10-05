@@ -10,6 +10,7 @@ from pathlib import Path
 
 import uvicorn
 
+from app.api.auth import AuthManager
 from app.api.server import create_app
 from app.core.env_manager import EnvManager
 from app.core.registry import create_default_registry
@@ -44,7 +45,9 @@ async def main() -> None:
     env_manager = EnvManager(env_file)
     scheduler = BackupScheduler(config_file, registry, env_manager)
     scheduler.load_config()
-    app = create_app(scheduler, registry, env_manager)
+    state_root = Path(os.environ.get("STATE_ROOT", "/state"))
+    auth = AuthManager(state_root, env_manager, {**os.environ, **env_manager.read()})
+    app = create_app(scheduler, registry, env_manager, auth)
 
     port = int(os.environ.get("WEB_PORT", "8080"))
     uvicorn_config = uvicorn.Config(
@@ -53,6 +56,8 @@ async def main() -> None:
         port=port,
         log_level="warning",
         access_log=False,
+        # Keep request.client as the real peer: the proxy auth mode trusts it.
+        proxy_headers=False,
     )
     server = uvicorn.Server(uvicorn_config)
 

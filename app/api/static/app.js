@@ -642,14 +642,197 @@ async function saveSettings() {
   }
 }
 
-// ── Init ─────────────────────────────────────────────────────────────────────
+// ── Sign-in ─────────────────────────────────────────────────────────────────
 
-document.addEventListener("DOMContentLoaded", () => {
+let authState = null;
+let appStarted = false;
+
+// Any API call answered with 401 (session expired, signed out elsewhere) brings
+// the sign-in screen back instead of failing silently.
+const nativeFetch = window.fetch.bind(window);
+window.fetch = async (...args) => {
+  const res = await nativeFetch(...args);
+  if (res.status === 401 && !String(args[0]).includes("/api/auth/")) showAuthScreen();
+  return res;
+};
+
+async function checkAuth() {
+  try {
+    authState = await api("/api/auth/status");
+  } catch (e) {
+    showToast("Can't reach the server: " + e.message, "err");
+    return;
+  }
+  if (authState.authenticated) startApp();
+  else showAuthScreen();
+}
+
+function showAuthScreen() {
+  const setup = Boolean(authState && authState.setup_required);
+  const proxy = authState && authState.mode === "proxy";
+  document.getElementById("auth-intro").textContent = proxy
+    ? "This app expects your sign-in proxy (Authelia, Authentik…) to log you in. Open it through the proxy."
+    : setup
+      ? "Create the admin password. You need the one-time setup code from the server logs."
+      : "Enter the admin password.";
+  document.getElementById("setup-code-field").hidden = !setup;
+  document.getElementById("auth-confirm-field").hidden = !setup;
+  const pw = document.getElementById("auth-password");
+  pw.autocomplete = setup ? "new-password" : "current-password";
+  pw.closest(".field").hidden = proxy;
+  document.getElementById("auth-submit").hidden = proxy;
+  document.getElementById("auth-submit").textContent = setup ? "Create password" : "Sign in";
+  document.getElementById("auth-error").textContent = "";
+  document.getElementById("auth-screen").hidden = false;
+  (setup ? document.getElementById("auth-setup-code") : pw).focus();
+}
+
+async function submitAuth(e) {
+  e.preventDefault();
+  const setup = authState.setup_required;
+  const password = document.getElementById("auth-password").value;
+  const error = document.getElementById("auth-error");
+  if (setup && password !== document.getElementById("auth-confirm").value) {
+    error.textContent = "The passwords don't match.";
+    return;
+  }
+  const body = setup
+    ? { setup_code: document.getElementById("auth-setup-code").value, password }
+    : { password };
+  try {
+    await api(setup ? "/api/auth/setup" : "/api/auth/login", sendJson("POST", body));
+  } catch (err) {
+    error.textContent = err.message;
+    return;
+  }
+  document.getElementById("auth-form").reset();
+  document.getElementById("auth-screen").hidden = true;
+  authState = await api("/api/auth/status");
+  startApp();
+}
+
+function startApp() {
+  document.getElementById("logout-btn").hidden = authState.mode !== "password";
   fetchServices();
   fetchDestinations();
   fetchSettings();
-  setInterval(fetchServices, 15000);
+  renderSecurity();
+  if (!appStarted) {
+    appStarted = true;
+    setInterval(fetchServices, 15000);
+  }
+}
 
+async function logout() {
+  await api("/api/auth/logout", { method: "POST" }).catch(() => {});
+  location.reload();
+}
+
+function renderSecurity() {
+  const s = authState;
+  const option = (value, label) => `<option value="${value}" ${s.mode === value ? "selected" : ""}>${label}</option>`;
+  document.getElementById("security-panel").innerHTML = `
+    <div class="dest-card" style="max-width:420px">
+      <div class="card-title">Sign-in</div>
+      <div class="field">
+        <label for="auth-mode">How people sign in</label>
+        <select id="auth-mode" onchange="toggleProxyFields()">
+          ${option("password", "Admin password")}
+          ${option("proxy", "My sign-in proxy (Authelia, Authentik…)")}
+          ${option("off", "No sign-in")}
+        </select>
+        <span class="hint" id="auth-mode-hint"></span>
+      </div>
+      <div id="proxy-fields">
+        <div class="field">
+          <label for="auth-proxies">Proxy IP addresses</label>
+          <input id="auth-proxies" value="${esc(s.trusted_proxies)}" placeholder="10.0.0.5, 172.18.0.0/16" spellcheck="false" />
+          <span class="hint">Only requests from these addresses may name the user. Use your proxy's IP.</span>
+        </div>
+        <div class="field">
+          <label for="auth-header">User header</label>
+          <input id="auth-header" value="${esc(s.proxy_header)}" spellcheck="false" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="auth-current">Current admin password</label>
+        <input id="auth-current" type="password" autocomplete="current-password" />
+        <span class="hint">Needed to change any of these settings.</span>
+      </div>
+      <div class="save-row">
+        <button class="btn btn-primary btn-sm" onclick="saveAuthSettings()">Save sign-in settings</button>
+      </div>
+      <details class="advanced">
+        <summary>Change admin password</summary>
+        <div class="field">
+          <label for="auth-new">New password</label>
+          <input id="auth-new" type="password" autocomplete="new-password" />
+        </div>
+        <div class="field">
+          <label for="auth-new-confirm">Repeat new password</label>
+          <input id="auth-new-confirm" type="password" autocomplete="new-password" />
+          <span class="hint">At least 12 characters. Other devices are signed out.</span>
+        </div>
+        <button class="btn btn-secondary btn-sm" style="align-self:flex-start" onclick="changePassword()">Change password</button>
+      </details>
+    </div>`;
+  toggleProxyFields();
+}
+
+function toggleProxyFields() {
+  const mode = document.getElementById("auth-mode").value;
+  document.getElementById("proxy-fields").hidden = mode !== "proxy";
+  document.getElementById("auth-mode-hint").textContent = {
+    password: "Recommended. Sessions last up to 30 days; 5 wrong passwords lock that device out for 15 minutes.",
+    proxy: "If the proxy addresses are wrong you'll be locked out; set AUTH_MODE=password in .env to recover.",
+    off: "Anyone who can reach this page can read and change every credential here. Only use on a network nobody else can reach.",
+  }[mode];
+}
+
+async function saveAuthSettings() {
+  const mode = document.getElementById("auth-mode").value;
+  if (mode === "off" && !confirm("Turn off sign-in? Anyone who can reach this page gets full access.")) return;
+  try {
+    await api("/api/auth/settings", sendJson("PUT", {
+      mode,
+      trusted_proxies: document.getElementById("auth-proxies").value,
+      proxy_header: document.getElementById("auth-header").value,
+      current_password: document.getElementById("auth-current").value,
+    }));
+    showToast("Sign-in settings saved", "ok");
+    authState = await api("/api/auth/status");
+    if (!authState.authenticated) { showAuthScreen(); return; }
+    startApp();
+  } catch (e) {
+    showToast(e.message, "err");
+  }
+}
+
+async function changePassword() {
+  const next = document.getElementById("auth-new").value;
+  if (next !== document.getElementById("auth-new-confirm").value) {
+    showToast("The new passwords don't match", "err");
+    return;
+  }
+  try {
+    await api("/api/auth/password", sendJson("POST", {
+      current_password: document.getElementById("auth-current").value,
+      new_password: next,
+    }));
+    showToast("Password changed. Other devices are signed out.", "ok");
+    renderSecurity();
+  } catch (e) {
+    showToast(e.message, "err");
+  }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+
+document.addEventListener("DOMContentLoaded", () => {
+  checkAuth();
+
+  document.getElementById("auth-form").addEventListener("submit", submitAuth);
+  document.getElementById("logout-btn").addEventListener("click", logout);
   document.getElementById("refresh-btn").addEventListener("click", fetchServices);
 
   document.getElementById("config-modal").addEventListener("click", e => {

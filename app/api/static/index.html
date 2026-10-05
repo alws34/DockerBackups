@@ -9,8 +9,36 @@
 <body>
   <header>
     <h1>Homelab Takeout</h1>
-    <button id="refresh-btn">Refresh</button>
+    <div class="header-actions">
+      <button id="refresh-btn">Refresh</button>
+      <button id="logout-btn" hidden>Sign out</button>
+    </div>
   </header>
+
+  <div id="auth-screen" class="auth-screen" hidden>
+    <form id="auth-form" class="auth-card">
+      <h2>Homelab Takeout</h2>
+      <p id="auth-intro" class="auth-intro"></p>
+      <input type="text" name="username" value="admin" autocomplete="username" hidden />
+      <div class="field" id="setup-code-field" hidden>
+        <label for="auth-setup-code">Setup code</label>
+        <input id="auth-setup-code" autocomplete="one-time-code" spellcheck="false" />
+        <span class="hint">Printed in the server logs (<code>docker logs homelab-takeout</code> or
+          <code>journalctl -u homelab-takeout</code>) and saved in <code>state/setup-code.txt</code>.</span>
+      </div>
+      <div class="field">
+        <label for="auth-password">Password</label>
+        <input id="auth-password" type="password" required />
+      </div>
+      <div class="field" id="auth-confirm-field" hidden>
+        <label for="auth-confirm">Repeat password</label>
+        <input id="auth-confirm" type="password" autocomplete="new-password" />
+        <span class="hint">At least 12 characters. A few random words work well.</span>
+      </div>
+      <p id="auth-error" class="auth-error" role="alert"></p>
+      <button class="btn btn-primary" type="submit" id="auth-submit">Sign in</button>
+    </form>
+  </div>
 
   <main>
     <div style="display:flex;align-items:center;justify-content:space-between;margin:2rem 0 .75rem">
@@ -27,8 +55,11 @@
     </div>
 
     <div class="section-title">Settings</div>
-    <div id="settings-panel">
-      <p style="color:var(--muted)">Loading…</p>
+    <div class="settings-row">
+      <div id="settings-panel">
+        <p style="color:var(--muted)">Loading…</p>
+      </div>
+      <div id="security-panel"></div>
     </div>
   </main>
 

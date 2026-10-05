@@ -99,7 +99,9 @@ jobs:
       - name: Probe GUI, API and Bitwarden CLI
         run: |
           curl -fsS -o /dev/null http://127.0.0.1:9100/
-          curl -fsS http://127.0.0.1:9100/api/services | python3 -m json.tool > /dev/null
+          # The API refuses anonymous calls and asks for first-run setup.
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9100/api/services)" = 401
+          curl -fsS http://127.0.0.1:9100/api/auth/status | grep -q '"setup_required":true'
           docker exec homelab-takeout bw --version
           test "$(docker exec homelab-takeout id -u)" = "$(id -u)"
       - name: Container logs

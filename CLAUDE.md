@@ -16,7 +16,7 @@ vanilla JS GUI, Python 3.12 Alpine. Workers produce files; destinations upload t
 - The container runs as non-root (uid 1000 / `PUID`) with a read-only root filesystem and all
   capabilities dropped. The app may only write to the bind mounts (`/backups`, `/logs`,
   `/state`, `/config`, `/app-env/.env`), `/tmp` and `$HOME` (both tmpfs).
-- All tests must pass (54 at last count). Run `PYTHONPATH=. pytest tests/ -x -q` before any commit.
+- All tests must pass (78 at last count). Run `PYTHONPATH=. pytest tests/ -x -q` before any commit.
 
 ## Stack
 
@@ -47,7 +47,9 @@ app/
     registry.py     — ALL_DESTINATIONS and the enabled check
     *.py            — google_drive, onedrive, sftp, smb, local_folder
   api/
-    server.py       — FastAPI app factory
+    server.py       — FastAPI app factory (middleware order: auth guard inside security guards)
+    auth.py         — admin password (scrypt), sessions, lockout, proxy/off modes
+    security.py     — Host allow-list, cross-site write blocking, security headers
     routes/         — one file per API group (services, logs, env_vars, destinations, settings)
     static/         — index.html, app.js, style.css (Glassmorphism dark theme)
 config/
