@@ -7,6 +7,19 @@ services:
     container_name: homelab-takeout
     restart: unless-stopped
 
+    # Runs unprivileged. Set PUID/PGID in .env if ./backups, ./logs, ./state,
+    # ./config and .env are owned by a uid/gid other than 1000.
+    user: "${PUID:-1000}:${PGID:-1000}"
+    read_only: true
+    tmpfs:
+      - /tmp           # workers stage exports here before archiving
+      # writable HOME for the Bitwarden CLI (~/.config), owned by whatever PUID is
+      - /home/takeout:uid=${PUID:-1000},gid=${PGID:-1000},mode=0700
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
     env_file:
       - .env
 
@@ -19,6 +32,8 @@ services:
       TZ: ${TZ:-UTC}
       WEB_PORT: "9100"
 
+    # Host networking lets workers reach services on the LAN (and on localhost)
+    # without extra routing. The GUI then listens on the host's port 9100 directly.
     network_mode: host
 
     volumes:
