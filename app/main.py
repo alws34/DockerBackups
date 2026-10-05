@@ -37,10 +37,6 @@ async def main() -> None:
     else:
         env_file = Path(".env")
 
-    if not Path(config_file).exists():
-        logger.error(f"Config file not found: {config_file}")
-        sys.exit(1)
-
     registry = create_default_registry()
     env_manager = EnvManager(env_file)
     scheduler = BackupScheduler(config_file, registry, env_manager)
