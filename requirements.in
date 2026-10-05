@@ -11,3 +11,4 @@ google-auth-oauthlib>=1.2.0
 msal>=1.31.0
 paramiko>=3.5.0
 smbprotocol>=1.15.0
+python-socketio[client]>=5.11.0
