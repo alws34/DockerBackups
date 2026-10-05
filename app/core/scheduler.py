@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -13,16 +14,22 @@ from typing import Any
 from app.core.context import BackupContext, BackupError, BackupResult
 from app.core.env_manager import EnvManager
 from app.core.registry import WorkerRegistry
-from app.destinations.google_drive import create_google_drive_destination
+from app.destinations.registry import ALL_DESTINATIONS, is_enabled
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_STATE_ROOT = "/state"
 _DEFAULT_DAILY_AT = "03:30"
 _DEFAULT_KEEP_DAYS = 30
-_DEFAULT_DRIVE_KEEP_COUNT = 3
+_DEFAULT_REMOTE_KEEP_COUNT = 3
 _STATE_FILENAME = "last_result.json"
 _SECONDS_PER_HOUR = 3600
+_UPLOAD_TIMEOUT_SECONDS = 30 * 60
+
+
+# One lock per destination: uploads to the same place run one at a time, so token
+# refreshes and shared SMB sessions never race. Different destinations still overlap.
+_DESTINATION_LOCKS = {d.destination_type: threading.Lock() for d in ALL_DESTINATIONS}
 
 
 def _state_root() -> Path:
@@ -66,7 +73,7 @@ class BackupScheduler:
             "interval_hours": schedule.get("interval_hours", 0),
             "run_on_start": schedule.get("run_on_start", False),
             "keep_days": retention.get("keep_days", _DEFAULT_KEEP_DAYS),
-            "drive_keep_count": retention.get("drive_keep_count", _DEFAULT_DRIVE_KEEP_COUNT),
+            "remote_keep_count": self._remote_keep_count(),
         }
 
     def update_settings(
@@ -75,7 +82,7 @@ class BackupScheduler:
         interval_hours: int,
         run_on_start: bool,
         keep_days: int,
-        drive_keep_count: int,
+        remote_keep_count: int,
     ) -> None:
         """Update schedule and retention settings and persist them to disk."""
         schedule = self._config.setdefault("schedule", {})
@@ -84,8 +91,15 @@ class BackupScheduler:
         schedule["run_on_start"] = run_on_start
         retention = self._config.setdefault("retention", {})
         retention["keep_days"] = keep_days
-        retention["drive_keep_count"] = drive_keep_count
+        retention["remote_keep_count"] = remote_keep_count
+        retention.pop("drive_keep_count", None)  # old name, from when Drive was the only option
         self._save_config()
+
+    def _remote_keep_count(self) -> int:
+        retention = self._config.get("retention", {})
+        return retention.get(
+            "remote_keep_count", retention.get("drive_keep_count", _DEFAULT_REMOTE_KEEP_COUNT)
+        )
 
     def set_enabled(self, service_name: str, enabled: bool) -> None:
         """Toggle a service's enabled flag and persist the change to disk."""
@@ -149,7 +163,11 @@ class BackupScheduler:
             self._persist_state(name, result)
             if result.success:
                 logger.info(f"[{name}] Backup succeeded: {result.message}")
-                await loop.run_in_executor(None, self._upload_to_destinations, result, context)
+                uploads = await loop.run_in_executor(
+                    None, self._upload_to_destinations, result, context
+                )
+                if uploads:
+                    self._persist_state(name, result, uploads)
             else:
                 logger.error(f"[{name}] Backup reported failure: {result.message}")
             return result
@@ -164,24 +182,44 @@ class BackupScheduler:
         finally:
             self._running[name] = False
 
-    def _upload_to_destinations(self, result: BackupResult, context: BackupContext) -> None:
-        try:
-            destination = create_google_drive_destination(self._config, context.env)
-        except BackupError as e:
-            logger.error(f"[{result.service_name}] Google Drive config error: {e}")
-            return
-        if destination is None:
-            return
-        keep_count = self._config.get("retention", {}).get(
-            "drive_keep_count", _DEFAULT_DRIVE_KEEP_COUNT
-        )
-        for file_path in result.output_files:
-            try:
-                destination.upload(file_path, result, keep_count=keep_count)
-            except Exception as e:  # noqa: BLE001 - isolate per-file upload failures
-                logger.error(
-                    f"[{result.service_name}] Google Drive upload failed for {file_path.name}: {e}"
-                )
+    def _upload_to_destinations(
+        self, result: BackupResult, context: BackupContext
+    ) -> dict[str, dict[str, Any]]:
+        """Copy a successful run's files to every enabled destination.
+
+        Each destination is isolated: one failing or hanging never stops the others or
+        later runs. Returns ``{destination_type: {"ok": bool, "message": str}}``.
+        """
+        uploads: dict[str, dict[str, Any]] = {}
+        keep_count = self._remote_keep_count()
+        for dest_class in ALL_DESTINATIONS:
+            if not is_enabled(dest_class, self._config, context.env):
+                continue
+            outcome: dict[str, str] = {}
+
+            def work(dest_class: type = dest_class, outcome: dict = outcome) -> None:
+                try:
+                    outcome["message"] = _ship_to(dest_class, result, context.env, keep_count)
+                except Exception as e:  # noqa: BLE001 - isolate each destination's failure
+                    outcome["error"] = str(e)
+
+            # ponytail: a hung network call can't be killed in Python, so the thread is
+            # abandoned (daemon) after the timeout; it only costs a thread until restart.
+            thread = threading.Thread(
+                target=work, daemon=True, name=f"upload-{dest_class.destination_type}"
+            )
+            thread.start()
+            thread.join(_UPLOAD_TIMEOUT_SECONDS)
+            label = f"[{result.service_name}] {dest_class.display_name}"
+            if thread.is_alive():
+                outcome["error"] = f"Timed out after {_UPLOAD_TIMEOUT_SECONDS // 60} minutes"
+            if "error" in outcome:
+                uploads[dest_class.destination_type] = {"ok": False, "message": outcome["error"]}
+                logger.error(f"{label} upload failed: {outcome['error']}")
+            else:
+                uploads[dest_class.destination_type] = {"ok": True, "message": outcome["message"]}
+                logger.info(f"{label}: {outcome['message']}")
+        return uploads
 
     def _make_context(self) -> BackupContext:
         retention = self._config.get("retention", {}).get("keep_days", _DEFAULT_KEEP_DAYS)
@@ -214,17 +252,22 @@ class BackupScheduler:
         state_dir.mkdir(parents=True, exist_ok=True)
         (state_dir / _STATE_FILENAME).write_text(json.dumps(state, indent=2))
 
-    def _persist_state(self, service_name: str, result: BackupResult) -> None:
-        self._write_state(
-            service_name,
-            {
-                "success": result.success,
-                "message": result.message,
-                "started_at": result.started_at.isoformat(),
-                "finished_at": result.finished_at.isoformat(),
-                "output_files": [str(f) for f in result.output_files],
-            },
-        )
+    def _persist_state(
+        self,
+        service_name: str,
+        result: BackupResult,
+        uploads: dict[str, dict[str, Any]] | None = None,
+    ) -> None:
+        state: dict[str, Any] = {
+            "success": result.success,
+            "message": result.message,
+            "started_at": result.started_at.isoformat(),
+            "finished_at": result.finished_at.isoformat(),
+            "output_files": [str(f) for f in result.output_files],
+        }
+        if uploads:
+            state["uploads"] = uploads
+        self._write_state(service_name, state)
 
     def _persist_error_state(self, service_name: str, error: str) -> None:
         now = datetime.now().isoformat()
@@ -238,3 +281,22 @@ class BackupScheduler:
                 "output_files": [],
             },
         )
+
+
+def _ship_to(dest_class: type, result: BackupResult, env: dict[str, str], keep_count: int) -> str:
+    """Upload all of a run's files to one destination and prune; return a summary."""
+    lock = _DESTINATION_LOCKS[dest_class.destination_type]
+    if not lock.acquire(timeout=_UPLOAD_TIMEOUT_SECONDS):
+        raise BackupError("A previous upload to this destination is still stuck.")
+    destination = None
+    try:
+        destination = dest_class.from_env(env)
+        pruned: list[str] = []
+        for file_path in result.output_files:
+            pruned += destination.ship(file_path, result.service_name, keep_count)
+        message = f"Uploaded {len(result.output_files)} file(s)"
+        return message + (f", removed {len(pruned)} old" if pruned else "")
+    finally:
+        if destination is not None:
+            destination.close()
+        lock.release()
