@@ -138,12 +138,12 @@ class SnipeItWorker(BackupWorker):
             if len(failed) == len(_ENDPOINTS):
                 raise BackupError(f"All Snipe-IT endpoints failed; check SNIPEIT_URL ({base_url})")
 
-            archive = backup_dir / f"snipeit_{timestamp}.tar.gz"
+            archive = backup_dir / f"{self.service_name}_{timestamp}.tar.gz"
             with tarfile.open(archive, "w:gz") as tar:
-                tar.add(work, arcname=f"snipeit_{timestamp}")
+                tar.add(work, arcname=f"{self.service_name}_{timestamp}")
 
         archive.chmod(0o600)
-        self.cleanup_old_files(backup_dir, "snipeit_*.tar.gz", context.retention_days)
+        self.cleanup_old_files(backup_dir, f"{self.service_name}_*.tar.gz", context.retention_days)
 
         return BackupResult(
             service_name=self.service_name,

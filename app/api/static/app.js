@@ -191,6 +191,10 @@ function serviceBody(svc) {
     </div>
     <div>
       <h4>Settings${miss.length ? ` · ${miss.length} missing` : ""}</h4>
+      <div class="field">
+        <label for="s-${esc(svc.name)}-label">Name on the dashboard <span class="state">${esc(svc.app_name)}</span></label>
+        <input id="s-${esc(svc.name)}-label" data-label value="${esc(svc.display_name)}" autocomplete="off" />
+      </div>
       ${fieldList(`s-${svc.name}`, svc.env_vars)}
     </div>
     <div class="tile-foot">
@@ -380,8 +384,11 @@ function typedValues(tile) {
 
 async function saveService(svc, tile) {
   const updates = typedValues(tile);
-  if (!Object.keys(updates).length) return toast("Nothing changed");
-  await api(`/api/env-vars/${svc.type}`, sendJson("PUT", { updates }));
+  const label = tile.querySelector("[data-label]")?.value.trim() ?? svc.display_name;
+  const renamed = label !== svc.display_name;
+  if (!Object.keys(updates).length && !renamed) return toast("Nothing changed");
+  if (renamed) await api(`/api/services/${svc.name}/label`, sendJson("PUT", { label }));
+  if (Object.keys(updates).length) await api(`/api/services/${svc.name}/env-vars`, sendJson("PUT", { updates }));
   tile.querySelectorAll("input[type=password]").forEach(inp => { inp.value = ""; });
   toast("Saved");
   await refresh();
@@ -428,19 +435,22 @@ function renderCatalog() {
   const q = $("#cat-q").value.trim().toLowerCase();
   const items = (openCatalog.items || []).filter(c => !q || `${c.display_name} ${c.description}`.toLowerCase().includes(q));
   $("#cat-list").innerHTML = items.map(c => `<div class="cat-item">
-      <div class="row">${logo(c)}<span class="tile-name">${esc(c.display_name)}</span>
-        ${c.added ? `<button class="btn danger-outline" data-remove="${esc(c.type)}">Remove</button>` : `<button class="btn" data-add="${esc(c.type)}">Add</button>`}</div>
+      <div class="row">${logo(c)}<span class="tile-name">${esc(c.display_name)}</span></div>
       <p>${esc(c.description)}</p>
       ${c.settings.length ? `<div class="needs">Needs: ${c.settings.map(esc).join(", ")}</div>` : ""}
+      <div class="row foot">
+        ${c.added ? `<span class="status ok">Added${c.added > 1 ? ` (${c.added})` : ""}</span>` : "<span></span>"}
+        <button class="btn" data-add="${esc(c.type)}">${c.added ? "Add another" : "Add"}</button>
+      </div>
     </div>`).join("") || `<p class="muted">No app matches “${esc(q)}”.</p>`;
 }
 
 async function addService(type) {
-  await api("/api/services", sendJson("POST", { type }));
+  const { service } = await api("/api/services", sendJson("POST", { type }));
   $("#catalog").close();
   await refresh();
-  openAndShow(`s:${type}`);
-  toast(`${services.find(s => s.name === type)?.display_name || type} added. Fill in its settings.`);
+  openAndShow(`s:${service}`);
+  toast(`${services.find(s => s.name === service)?.display_name || type} added. Fill in its settings.`);
 }
 
 // ── destinations ───────────────────────────────────────────────────────────
@@ -770,7 +780,7 @@ function tileItem(tile) {
 const guarded = fn => (...args) => Promise.resolve(fn(...args)).catch(e => toast(e.message, true));
 
 document.addEventListener("click", guarded(async e => {
-  const el = e.target.closest("[data-act], [data-goto], [data-add], [data-remove], [data-close]");
+  const el = e.target.closest("[data-act], [data-goto], [data-add], [data-close]");
   if (!el) return;
   if (el.dataset.close !== undefined) return el.closest("dialog").close();
   if (el.dataset.goto) {
@@ -778,14 +788,6 @@ document.addEventListener("click", guarded(async e => {
     return openAndShow(el.dataset.goto);
   }
   if (el.dataset.add) return addService(el.dataset.add);
-  if (el.dataset.remove) {
-    const svc = services.find(x => x.type === el.dataset.remove);
-    if (svc && await removeService(svc)) {
-      openCatalog.items = await api("/api/catalog");
-      renderCatalog();
-    }
-    return;
-  }
   const act = el.dataset.act;
   if (act === "catalog") return openCatalog();
   if (act === "dest-picker") return openDestinationPicker();
