@@ -55,6 +55,7 @@ def create_default_registry() -> WorkerRegistry:
     from app.workers.plex import PlexWorker
     from app.workers.openproject import OpenProjectWorker
     from app.workers.qbittorrent import QBittorrentWorker
+    from app.workers.openwebui import OpenWebUIWorker
     from app.workers.snipeit import SnipeItWorker
     from app.workers.spoolman import SpoolmanWorker
     from app.workers.vaultwarden_encrypted_json import VaultwardenEncryptedJsonWorker
@@ -78,6 +79,7 @@ def create_default_registry() -> WorkerRegistry:
         OpenProjectWorker,
         QBittorrentWorker,
         HomeAssistantWorker,
+        OpenWebUIWorker,
     ):
         registry.register(worker.worker_type, worker)
     return registry
