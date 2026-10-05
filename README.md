@@ -4,7 +4,9 @@
 </picture>
 
 <p align="center">
-  <a href="https://github.com/alws34/homelab-takeout/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/alws34/homelab-takeout/ci.yml?branch=main&style=flat-square&label=CI" /></a>
+  <a href="https://github.com/alws34/homelab-takeout/actions/workflows/ci.yml"><img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/alws34/homelab-takeout/ci.yml?branch=main&style=flat-square&label=tests" /></a>
+  <a href="https://sonarcloud.io/summary/new_code?id=alws34_homelab-takeout"><img alt="Quality gate" src="https://img.shields.io/sonar/quality_gate/alws34_homelab-takeout?server=https%3A%2F%2Fsonarcloud.io&style=flat-square&label=quality%20gate" /></a>
+  <a href="https://sonarcloud.io/component_measures?id=alws34_homelab-takeout&metric=coverage"><img alt="Coverage" src="https://img.shields.io/sonar/coverage/alws34_homelab-takeout?server=https%3A%2F%2Fsonarcloud.io&style=flat-square" /></a>
   <img alt="Python 3.12" src="https://img.shields.io/badge/python-3.12-3776AB?style=flat-square&logo=python&logoColor=white" />
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/alws34/homelab-takeout?style=flat-square" /></a>
   <img alt="Supported services" src="https://img.shields.io/badge/services-12-34d399?style=flat-square" />
@@ -267,6 +269,30 @@ pip install --require-hashes -r requirements.txt -r requirements-dev.txt
 ruff check app tests && ruff format --check app tests
 PYTHONPATH=. pytest tests -q
 ```
+
+### Tests
+
+About 85 tests run in seconds with no network, Docker or live apps (`PYTHONPATH=. pytest
+tests -q`). They cover:
+
+- **Sign-in and web security:** setup code, password hashing, sessions, lockout,
+  password change, proxy mode, cross-site request blocking, DNS-rebinding protection,
+  security headers.
+- **Scheduler:** schedules, retention, run history, first start with an empty
+  dashboard, upgrades that restore apps from `.env`, unsafe service names.
+- **Destinations:** retention only ever touches files this app made, private
+  0600 writes, the local folder, upload timeouts and isolation (one failing destination
+  never stops the others), the Google login flow, SFTP host-key pinning and key upload.
+- **Workers:** Wiki.js, n8n, Snipe-IT and Vaultwarden against mocked APIs, plus
+  the shared fetch and archive helpers.
+- **Settings and the GUI's API:** `.env` reading and writing (including rejecting
+  values that would add lines), adding and removing apps, every app and destination
+  having a logo.
+
+CI adds a Docker build and smoke test on amd64 and arm64, an install of the systemd
+service, CodeQL and SonarQube Cloud. SFTP, SMB and the Docker image are also tested by
+hand against real servers before releases. Not yet covered: OneDrive, SMB and some
+workers (Bar Assistant, KitchenOwl, Linkwarden) have no automated tests.
 
 Dependencies are locked with hashes by [pip-tools](https://pip-tools.readthedocs.io/):
 edit `requirements.in` (or `requirements-dev.in`), then run
