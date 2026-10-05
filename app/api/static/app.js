@@ -1,4 +1,8 @@
 const API = "";
+// Escape anything server-provided before it goes into innerHTML: result messages can
+// contain raw text from upstream app APIs, which must never run as markup.
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 let services = [];
 let modalService = null;
 
@@ -26,14 +30,14 @@ function lastRunLine(svc) {
   const lr = svc.last_result;
   if (!lr) return "";
   const dt = new Date(lr.finished_at).toLocaleString();
-  const msg = lr.message ? ` — ${lr.message.slice(0, 60)}` : "";
+  const msg = lr.message ? ` — ${esc(lr.message.slice(0, 60))}` : "";
   return `<div class="last-run">${dt}${msg}</div>`;
 }
 
 function envDots(svc) {
   if (!svc.env_vars || !svc.env_vars.length) return "";
   const dots = svc.env_vars.map(ev =>
-    `<span class="env-dot ${ev.configured ? "ok" : "missing"}" title="${ev.key}: ${ev.configured ? "set" : "MISSING"}"></span>`
+    `<span class="env-dot ${ev.configured ? "ok" : "missing"}" title="${esc(ev.key)}: ${ev.configured ? "set" : "MISSING"}"></span>`
   ).join("");
   return `<div class="env-indicators">${dots}</div>`;
 }
@@ -45,15 +49,15 @@ function renderCards(svcs) {
     return;
   }
   grid.innerHTML = svcs.map(svc => `
-    <div class="card" data-name="${svc.name}">
+    <div class="card" data-name="${esc(svc.name)}">
       <div class="card-header">
         <div>
-          <div class="card-title">${svc.display_name}</div>
-          <div class="card-type">${svc.type}</div>
+          <div class="card-title">${esc(svc.display_name)}</div>
+          <div class="card-type">${esc(svc.type)}</div>
         </div>
         ${statusBadge(svc)}
       </div>
-      ${svc.description ? `<div class="card-desc">${svc.description}</div>` : ""}
+      ${svc.description ? `<div class="card-desc">${esc(svc.description)}</div>` : ""}
       ${envDots(svc)}
       ${lastRunLine(svc)}
       <div class="toggle-row">
@@ -140,13 +144,13 @@ function closeModal() {
 
 function eyeInput(id, dataKey, isSecret, placeholder, value, extraAttrs = "") {
   if (!isSecret) {
-    return `<input type="text" id="${id}" data-key="${dataKey}"
-      placeholder="${placeholder}" value="${value}" autocomplete="off" spellcheck="false" ${extraAttrs} />`;
+    return `<input type="text" id="${esc(id)}" data-key="${esc(dataKey)}"
+      placeholder="${esc(placeholder)}" value="${esc(value)}" autocomplete="off" spellcheck="false" ${extraAttrs} />`;
   }
   return `
     <div class="input-wrap">
-      <input type="password" id="${id}" data-key="${dataKey}"
-        placeholder="${placeholder}" value="" autocomplete="new-password" spellcheck="false" ${extraAttrs} />
+      <input type="password" id="${esc(id)}" data-key="${esc(dataKey)}"
+        placeholder="${esc(placeholder)}" value="" autocomplete="new-password" spellcheck="false" ${extraAttrs} />
       <button type="button" class="eye-btn" onclick="toggleEye('${id}')" tabindex="-1">&#x1F441;</button>
     </div>`;
 }
@@ -166,7 +170,7 @@ function renderEnvForm(svc) {
   form.innerHTML = svc.env_vars.map(ev => `
     <div class="field">
       <label>
-        ${ev.label}
+        ${esc(ev.label)}
         ${ev.required ? '<span class="required"> *</span>' : ""}
       </label>
       ${eyeInput(
@@ -175,7 +179,7 @@ function renderEnvForm(svc) {
         ev.secret && ev.configured ? "(already set — leave blank to keep)" : "",
         ev.secret ? "" : (ev.value || "")
       )}
-      ${ev.description ? `<span class="hint">${ev.description}</span>` : ""}
+      ${ev.description ? `<span class="hint">${esc(ev.description)}</span>` : ""}
     </div>
   `).join("");
 }
@@ -235,7 +239,7 @@ async function fetchDestinations() {
     renderDestinations(destinations);
   } catch (e) {
     document.getElementById("destination-grid").innerHTML =
-      `<p style="color:var(--error)">Failed to load destinations: ${e.message}</p>`;
+      `<p style="color:var(--error)">Failed to load destinations: ${esc(e.message)}</p>`;
   }
 }
 
@@ -250,7 +254,7 @@ function renderDestinations(dests) {
       .filter(ev => ev.key !== "GOOGLE_DRIVE_ENABLED")
       .map(ev => `
         <div class="field">
-          <label>${ev.label}${ev.required ? ' <span class="required">*</span>' : ""}</label>
+          <label>${esc(ev.label)}${ev.required ? ' <span class="required">*</span>' : ""}</label>
           ${eyeInput(
             `dest-field-${dest.type}-${ev.key}`, ev.key,
             ev.secret,
@@ -258,7 +262,7 @@ function renderDestinations(dests) {
             ev.secret ? "" : (ev.value || ""),
             `data-dest="${dest.type}"`
           )}
-          ${ev.description ? `<span class="hint">${ev.description}</span>` : ""}
+          ${ev.description ? `<span class="hint">${esc(ev.description)}</span>` : ""}
         </div>
       `).join("");
 
@@ -291,7 +295,7 @@ function renderDestinations(dests) {
       <div class="field" style="margin-top:.25rem">
         <label>Redirect URI (add this to your Google Cloud OAuth client)</label>
         <div style="display:flex;gap:.4rem;align-items:center">
-          <code style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:.3rem .6rem;font-size:.78rem;flex:1;overflow-x:auto;white-space:nowrap">${callbackUri}</code>
+          <code style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:.3rem .6rem;font-size:.78rem;flex:1;overflow-x:auto;white-space:nowrap">${esc(callbackUri)}</code>
           <button class="btn btn-secondary btn-sm" onclick="navigator.clipboard.writeText('${callbackUri}').then(()=>showToast('Copied','ok'))">Copy</button>
         </div>
         <span class="hint">Google Cloud Console → OAuth client → Authorized redirect URIs → Add URI</span>
@@ -308,10 +312,10 @@ function renderDestinations(dests) {
       <div class="dest-card ${dest.enabled ? "enabled" : ""}" id="dest-card-${dest.type}">
         <div class="card-header">
           <div>
-            <div class="card-title">${dest.display_name}</div>
+            <div class="card-title">${esc(dest.display_name)}</div>
           </div>
         </div>
-        <div class="card-desc">${dest.description}</div>
+        <div class="card-desc">${esc(dest.description)}</div>
         <div class="toggle-row">
           <span class="toggle-label">Enabled</span>
           <label class="toggle">
@@ -443,7 +447,7 @@ async function fetchSettings() {
     renderSettings(s);
   } catch (e) {
     document.getElementById("settings-panel").innerHTML =
-      `<p style="color:var(--error)">Failed to load settings: ${e.message}</p>`;
+      `<p style="color:var(--error)">Failed to load settings: ${esc(e.message)}</p>`;
   }
 }
 
@@ -452,23 +456,23 @@ function renderSettings(s) {
     <div class="dest-card" style="max-width:420px">
       <div class="field">
         <label>Repeat every N hours <span style="color:var(--muted);font-weight:400">(0 = use daily time below)</span></label>
-        <input type="number" id="setting-interval-hours" value="${s.interval_hours}" min="0" step="1"
+        <input type="number" id="setting-interval-hours" value="${esc(s.interval_hours)}" min="0" step="1"
           style="max-width:120px" />
         <span class="hint">e.g. 6 = run every 6 hours. Set to 0 to run once daily at a fixed time.</span>
       </div>
       <div class="field">
         <label>Daily backup time (HH:MM, 24-hour) <span style="color:var(--muted);font-weight:400">— used when interval = 0</span></label>
-        <input type="text" id="setting-daily-at" value="${s.daily_at}" placeholder="03:30"
+        <input type="text" id="setting-daily-at" value="${esc(s.daily_at)}" placeholder="03:30"
           autocomplete="off" spellcheck="false" style="max-width:120px" />
       </div>
       <div class="field">
         <label>Local retention (days to keep old backups)</label>
-        <input type="number" id="setting-keep-days" value="${s.keep_days}" min="1" step="1"
+        <input type="number" id="setting-keep-days" value="${esc(s.keep_days)}" min="1" step="1"
           style="max-width:120px" />
       </div>
       <div class="field">
         <label>Google Drive — max backups to keep per service</label>
-        <input type="number" id="setting-drive-keep-count" value="${s.drive_keep_count ?? 3}" min="1" step="1"
+        <input type="number" id="setting-drive-keep-count" value="${esc(s.drive_keep_count ?? 3)}" min="1" step="1"
           style="max-width:120px" />
         <span class="hint">Oldest files beyond this count are deleted from Drive after each upload.</span>
       </div>
