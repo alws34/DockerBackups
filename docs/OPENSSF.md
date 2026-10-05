@@ -61,7 +61,7 @@ Do these roughly in order.
    scope they need), and leave *Allow GitHub Actions to create and approve pull
    requests* unchecked.
 9. **SonarQube Cloud**: sign in at <https://sonarcloud.io> with GitHub, import
-   the repository into organization `alws34` with project key
+   the repository into organization `alws34-homelab-takeout` with project key
    `alws34_homelab-takeout`, set *Analysis method* to GitHub Actions (turn
    *Automatic Analysis* off), create a token and add it as the repository secret
    `SONAR_TOKEN`. Until then the Sonar job skips its steps.
