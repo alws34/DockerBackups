@@ -1,4 +1,8 @@
 const API = "";
+// Escape anything server-provided before it goes into innerHTML: result messages can
+// contain raw text from upstream app APIs, which must never run as markup.
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 let services = [];
 let modalService = null;
 
@@ -26,14 +30,24 @@ function lastRunLine(svc) {
   const lr = svc.last_result;
   if (!lr) return "";
   const dt = new Date(lr.finished_at).toLocaleString();
-  const msg = lr.message ? ` — ${lr.message.slice(0, 60)}` : "";
-  return `<div class="last-run">${dt}${msg}</div>`;
+  const msg = lr.message ? ` — ${esc(lr.message.slice(0, 60))}` : "";
+  return `<div class="last-run">${dt}${msg}</div>${uploadsLine(lr)}`;
+}
+
+function uploadsLine(lr) {
+  if (!lr.uploads) return "";
+  const parts = Object.entries(lr.uploads).map(([type, u]) => {
+    const dest = destinations.find(d => d.type === type);
+    const name = dest ? dest.display_name : type;
+    return `<span class="${u.ok ? "upload-ok" : "upload-err"}" title="${esc(u.message)}">${u.ok ? "&#10003;" : "&#10007;"} ${esc(name)}</span>`;
+  });
+  return `<div class="last-run uploads">${parts.join(" ")}</div>`;
 }
 
 function envDots(svc) {
   if (!svc.env_vars || !svc.env_vars.length) return "";
   const dots = svc.env_vars.map(ev =>
-    `<span class="env-dot ${ev.configured ? "ok" : "missing"}" title="${ev.key}: ${ev.configured ? "set" : "MISSING"}"></span>`
+    `<span class="env-dot ${ev.configured ? "ok" : "missing"}" title="${esc(ev.key)}: ${ev.configured ? "set" : "MISSING"}"></span>`
   ).join("");
   return `<div class="env-indicators">${dots}</div>`;
 }
@@ -45,15 +59,15 @@ function renderCards(svcs) {
     return;
   }
   grid.innerHTML = svcs.map(svc => `
-    <div class="card" data-name="${svc.name}">
+    <div class="card" data-name="${esc(svc.name)}">
       <div class="card-header">
         <div>
-          <div class="card-title">${svc.display_name}</div>
-          <div class="card-type">${svc.type}</div>
+          <div class="card-title">${esc(svc.display_name)}</div>
+          <div class="card-type">${esc(svc.type)}</div>
         </div>
         ${statusBadge(svc)}
       </div>
-      ${svc.description ? `<div class="card-desc">${svc.description}</div>` : ""}
+      ${svc.description ? `<div class="card-desc">${esc(svc.description)}</div>` : ""}
       ${envDots(svc)}
       ${lastRunLine(svc)}
       <div class="toggle-row">
@@ -140,13 +154,13 @@ function closeModal() {
 
 function eyeInput(id, dataKey, isSecret, placeholder, value, extraAttrs = "") {
   if (!isSecret) {
-    return `<input type="text" id="${id}" data-key="${dataKey}"
-      placeholder="${placeholder}" value="${value}" autocomplete="off" spellcheck="false" ${extraAttrs} />`;
+    return `<input type="text" id="${esc(id)}" data-key="${esc(dataKey)}"
+      placeholder="${esc(placeholder)}" value="${esc(value)}" autocomplete="off" spellcheck="false" ${extraAttrs} />`;
   }
   return `
     <div class="input-wrap">
-      <input type="password" id="${id}" data-key="${dataKey}"
-        placeholder="${placeholder}" value="" autocomplete="new-password" spellcheck="false" ${extraAttrs} />
+      <input type="password" id="${esc(id)}" data-key="${esc(dataKey)}"
+        placeholder="${esc(placeholder)}" value="" autocomplete="new-password" spellcheck="false" ${extraAttrs} />
       <button type="button" class="eye-btn" onclick="toggleEye('${id}')" tabindex="-1">&#x1F441;</button>
     </div>`;
 }
@@ -166,7 +180,7 @@ function renderEnvForm(svc) {
   form.innerHTML = svc.env_vars.map(ev => `
     <div class="field">
       <label>
-        ${ev.label}
+        ${esc(ev.label)}
         ${ev.required ? '<span class="required"> *</span>' : ""}
       </label>
       ${eyeInput(
@@ -175,7 +189,7 @@ function renderEnvForm(svc) {
         ev.secret && ev.configured ? "(already set — leave blank to keep)" : "",
         ev.secret ? "" : (ev.value || "")
       )}
-      ${ev.description ? `<span class="hint">${ev.description}</span>` : ""}
+      ${ev.description ? `<span class="hint">${esc(ev.description)}</span>` : ""}
     </div>
   `).join("");
 }
@@ -226,163 +240,290 @@ function showToast(msg, type = "ok") {
 // ── Destinations ────────────────────────────────────────────────────────────
 
 let destinations = [];
+let loginPoll = null;
+const PROVIDERS = { google: "Google", microsoft: "Microsoft" };
+
+async function api(path, options = {}) {
+  const res = await fetch(`${API}${path}`, options);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.detail || `Request failed (${res.status})`);
+  return body;
+}
+
+const sendJson = (method, data) => ({
+  method,
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(data),
+});
 
 async function fetchDestinations() {
   try {
-    const res = await fetch(`${API}/api/destinations`);
-    if (!res.ok) throw new Error("Failed to fetch destinations");
-    destinations = await res.json();
+    destinations = await api("/api/destinations");
     renderDestinations(destinations);
+    if (services.length) renderCards(services);  // upload results need destination names
   } catch (e) {
     document.getElementById("destination-grid").innerHTML =
-      `<p style="color:var(--error)">Failed to load destinations: ${e.message}</p>`;
+      `<p style="color:var(--error)">Failed to load destinations: ${esc(e.message)}</p>`;
   }
+}
+
+function destField(dest, ev) {
+  return `
+    <div class="field">
+      <label>${esc(ev.label)}${ev.required ? ' <span class="required">*</span>' : ""}</label>
+      ${eyeInput(
+        `dest-field-${dest.type}-${ev.key}`, ev.key,
+        ev.secret,
+        ev.secret && ev.configured ? "(already set — leave blank to keep)" : "",
+        ev.secret ? "" : (ev.value || ""),
+        `data-dest="${esc(dest.type)}"`
+      )}
+      ${ev.description ? `<span class="hint">${esc(ev.description)}</span>` : ""}
+    </div>`;
+}
+
+function loginSection(dest) {
+  if (!dest.login_provider) return "";
+  const who = PROVIDERS[dest.login_provider];
+  const t = esc(dest.type);
+  if (dest.login && dest.login.connected) {
+    const account = dest.login.account ? ` as ${esc(dest.login.account)}` : "";
+    return `
+      <div class="creds-status ok">&#10003; Connected${account}</div>
+      <button class="btn btn-secondary btn-sm" style="align-self:flex-start" onclick="disconnectDestination('${t}')">Disconnect</button>`;
+  }
+  return `
+    <div class="creds-status missing">Not connected</div>
+    <button class="btn btn-primary btn-sm" style="align-self:flex-start" onclick="startLogin('${t}')"
+      ${dest.login_available ? "" : "disabled"}>Log in with ${who}</button>
+    ${dest.login_available ? "" : `<span class="hint">This build has no built-in ${who} app. Add your own under Advanced.</span>`}`;
+}
+
+function sftpKeySection() {
+  return `
+    <div class="field">
+      <label>SSH private key (optional)</label>
+      <textarea id="sftp-key" class="code-input" rows="3" spellcheck="false"
+        placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>
+      <span class="hint">Stored on this server, readable only by the app. Leave empty to log in with the password.</span>
+    </div>
+    <button class="btn btn-secondary btn-sm" style="align-self:flex-start" onclick="saveSftpKey()">Save key</button>`;
+}
+
+function googleOwnClientSection(dest) {
+  const callbackUri = `${window.location.origin}/api/destinations/google_drive/oauth/callback`;
+  return `
+    <details class="advanced">
+      <summary>Use your own Google OAuth client</summary>
+      <div class="creds-status ${dest.credentials_uploaded ? "ok" : "missing"}">
+        ${dest.credentials_uploaded ? "&#10003; client_secret.json uploaded" : "No client_secret.json uploaded"}
+      </div>
+      <div class="field">
+        <label>OAuth client secret JSON</label>
+        <textarea id="dest-credentials-google_drive" class="code-input" rows="4" spellcheck="false"
+          placeholder="Paste your client_secret.json contents here"></textarea>
+        <span class="hint">Google Cloud Console → APIs &amp; Services → Credentials → OAuth 2.0 Client IDs → Download JSON</span>
+      </div>
+      <button class="btn btn-secondary btn-sm" style="align-self:flex-start" onclick="uploadCredentials()">Upload client_secret.json</button>
+      <div class="field">
+        <label>Redirect URI to add to your OAuth client</label>
+        <code class="code-input">${esc(callbackUri)}</code>
+        <span class="hint">Google only accepts localhost or HTTPS addresses here.</span>
+      </div>
+      <button class="btn btn-secondary btn-sm" style="align-self:flex-start" onclick="authorizeGoogleDrive()"
+        ${dest.credentials_uploaded ? "" : "disabled"}>Authorize with my client</button>
+    </details>`;
 }
 
 function renderDestinations(dests) {
   const grid = document.getElementById("destination-grid");
-  if (!dests.length) {
-    grid.innerHTML = `<p style="color:var(--muted)">No destinations configured.</p>`;
-    return;
-  }
   grid.innerHTML = dests.map(dest => {
-    const fields = dest.env_vars
-      .filter(ev => ev.key !== "GOOGLE_DRIVE_ENABLED")
-      .map(ev => `
-        <div class="field">
-          <label>${ev.label}${ev.required ? ' <span class="required">*</span>' : ""}</label>
-          ${eyeInput(
-            `dest-field-${dest.type}-${ev.key}`, ev.key,
-            ev.secret,
-            ev.secret && ev.configured ? "(already set — leave blank to keep)" : "",
-            ev.secret ? "" : (ev.value || ""),
-            `data-dest="${dest.type}"`
-          )}
-          ${ev.description ? `<span class="hint">${ev.description}</span>` : ""}
-        </div>
-      `).join("");
-
-    const callbackUri = `${window.location.origin}/api/destinations/google_drive/oauth/callback`;
-    const credentialsSection = dest.type === "google_drive" ? `
-      <div style="display:flex;flex-direction:column;gap:.5rem">
-        <div class="creds-status ${dest.credentials_uploaded ? "ok" : "missing"}">
-          ${dest.credentials_uploaded
-            ? "&#10003; client_secret.json uploaded"
-            : "&#9888; No credentials — paste client_secret.json below and click Upload"}
-        </div>
-        <div class="creds-status ${dest.authorized ? "ok" : "missing"}">
-          ${dest.authorized
-            ? "&#10003; Google Drive authorized"
-            : "&#9888; Not authorized — click Authorize below"}
-        </div>
-      </div>
-      <div class="field" style="margin-top:.25rem">
-        <label>OAuth2 Client Secret JSON</label>
-        <textarea
-          id="dest-credentials-${dest.type}"
-          rows="4"
-          placeholder="Paste your client_secret.json contents here…"
-          style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.5rem .75rem;color:var(--text);font-size:.8rem;font-family:monospace;width:100%;resize:vertical"
-          spellcheck="false"
-        ></textarea>
-        <span class="hint">Google Cloud Console → APIs &amp; Services → Credentials → OAuth 2.0 Client IDs → Download JSON</span>
-      </div>
-      <button class="btn btn-secondary btn-sm" style="align-self:flex-start" onclick="uploadCredentials('${dest.type}')">Upload client_secret.json</button>
-      <div class="field" style="margin-top:.25rem">
-        <label>Redirect URI (add this to your Google Cloud OAuth client)</label>
-        <div style="display:flex;gap:.4rem;align-items:center">
-          <code style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:.3rem .6rem;font-size:.78rem;flex:1;overflow-x:auto;white-space:nowrap">${callbackUri}</code>
-          <button class="btn btn-secondary btn-sm" onclick="navigator.clipboard.writeText('${callbackUri}').then(()=>showToast('Copied','ok'))">Copy</button>
-        </div>
-        <span class="hint">Google Cloud Console → OAuth client → Authorized redirect URIs → Add URI</span>
-      </div>
-      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-        <button class="btn btn-primary btn-sm" onclick="authorizeGoogleDrive()" ${!dest.credentials_uploaded ? "disabled title='Upload client_secret.json first'" : ""}>
-          Authorize Google Drive
-        </button>
-        ${dest.authorized ? `<button class="btn btn-secondary btn-sm" onclick="revokeGoogleDrive()">Revoke Authorization</button>` : ""}
-      </div>
-    ` : "";
-
+    const t = esc(dest.type);
+    const basic = dest.env_vars.filter(ev => !ev.advanced).map(ev => destField(dest, ev)).join("");
+    const advanced = dest.env_vars.filter(ev => ev.advanced).map(ev => destField(dest, ev)).join("");
     return `
-      <div class="dest-card ${dest.enabled ? "enabled" : ""}" id="dest-card-${dest.type}">
+      <div class="dest-card ${dest.enabled ? "enabled" : ""}" id="dest-card-${t}">
         <div class="card-header">
-          <div>
-            <div class="card-title">${dest.display_name}</div>
-          </div>
+          <div class="card-title">${esc(dest.display_name)}</div>
         </div>
-        <div class="card-desc">${dest.description}</div>
+        <div class="card-desc">${esc(dest.description)}</div>
         <div class="toggle-row">
-          <span class="toggle-label">Enabled</span>
+          <span class="toggle-label">Upload here</span>
           <label class="toggle">
             <input type="checkbox" ${dest.enabled ? "checked" : ""}
-              onchange="toggleDestination('${dest.type}', this.checked)" />
+              onchange="toggleDestination('${t}', '${esc(dest.enabled_key)}', this.checked)" />
             <span class="toggle-track"></span>
             <span class="toggle-thumb"></span>
           </label>
         </div>
-        <div class="env-form" id="dest-form-${dest.type}">${fields}</div>
-        ${credentialsSection}
-        <div class="save-row">
-          <button class="btn btn-primary btn-sm" onclick="saveDestination('${dest.type}')">Save</button>
+        ${loginSection(dest)}
+        <div class="env-form" id="dest-form-${t}">
+          ${basic}
+          ${advanced ? `<details class="advanced"><summary>Advanced</summary>${advanced}</details>` : ""}
         </div>
-      </div>
-    `;
+        ${dest.type === "sftp" ? sftpKeySection() : ""}
+        ${dest.type === "google_drive" ? googleOwnClientSection(dest) : ""}
+        <div class="save-row">
+          <button class="btn btn-secondary btn-sm" onclick="testDestination('${t}')">Test connection</button>
+          ${basic || advanced ? `<button class="btn btn-primary btn-sm" onclick="saveDestination('${t}')">Save</button>` : ""}
+        </div>
+      </div>`;
   }).join("");
 }
 
-async function toggleDestination(destType, enabled) {
-  const updates = { GOOGLE_DRIVE_ENABLED: enabled ? "true" : "false" };
+async function toggleDestination(destType, enabledKey, enabled) {
   try {
-    const res = await fetch(`${API}/api/destinations/${destType}/env-vars`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ updates }),
-    });
-    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || "Failed"); }
-    showToast(`Google Drive ${enabled ? "enabled" : "disabled"}`, "ok");
+    await api(`/api/destinations/${destType}/env-vars`, sendJson("PUT", { updates: { [enabledKey]: enabled ? "true" : "false" } }));
+    const dest = destinations.find(d => d.type === destType);
+    showToast(`${dest ? dest.display_name : destType}: uploads ${enabled ? "on" : "off"}`, "ok");
     fetchDestinations();
   } catch (e) {
     showToast(e.message, "err");
+    fetchDestinations();
   }
 }
 
-async function saveDestination(destType) {
-  const inputs = document.querySelectorAll(`#dest-form-${destType} input[data-key]`);
+// Returns true when something was saved.
+async function saveDestination(destType, quiet = false) {
   const updates = {};
-  inputs.forEach(inp => {
+  document.querySelectorAll(`#dest-form-${destType} input[data-key]`).forEach(inp => {
     const val = inp.value.trim();
     if (val) updates[inp.dataset.key] = val;
   });
-  if (!Object.keys(updates).length) { showToast("Nothing changed", "ok"); return; }
+  if (!Object.keys(updates).length) {
+    if (!quiet) showToast("Nothing changed", "ok");
+    return false;
+  }
   try {
-    const res = await fetch(`${API}/api/destinations/${destType}/env-vars`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ updates }),
-    });
-    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || "Save failed"); }
-    showToast("Saved", "ok");
+    await api(`/api/destinations/${destType}/env-vars`, sendJson("PUT", { updates }));
+    if (!quiet) showToast("Saved", "ok");
+    return true;
+  } catch (e) {
+    showToast(e.message, "err");
+    throw e;
+  }
+}
+
+async function testDestination(destType) {
+  try {
+    await saveDestination(destType, true);
+    showToast("Testing connection…", "ok");
+    const r = await api(`/api/destinations/${destType}/test`, { method: "POST" });
+    if (r.ok) {
+      showToast(r.message, "ok");
+    } else if (r.fingerprint) {
+      const trust = confirm(
+        `First connection to this server. Its host key fingerprint is:\n\n${r.fingerprint}\n\n` +
+        "Trust it? To be sure, compare with `ssh-keygen -lf /etc/ssh/ssh_host_*_key.pub` on the server."
+      );
+      if (!trust) return;
+      await api(`/api/destinations/${destType}/env-vars`, sendJson("PUT", { updates: { SFTP_HOST_FINGERPRINT: r.fingerprint } }));
+      return testDestination(destType);
+    } else {
+      showToast(r.message, "err");
+    }
     fetchDestinations();
   } catch (e) {
     showToast(e.message, "err");
   }
 }
 
-async function uploadCredentials(destType) {
-  const textarea = document.getElementById(`dest-credentials-${destType}`);
+async function saveSftpKey() {
+  const box = document.getElementById("sftp-key");
+  const key = box ? box.value.trim() : "";
+  if (!key) { showToast("Paste a private key first", "err"); return; }
+  try {
+    await saveDestination("sftp", true);
+    await api("/api/destinations/sftp/key", sendJson("POST", { key }));
+    box.value = "";
+    showToast("SSH key saved", "ok");
+    fetchDestinations();
+  } catch (e) {
+    showToast(e.message, "err");
+  }
+}
+
+function setLoginStatus(text, isError = false) {
+  const el = document.getElementById("login-status");
+  el.textContent = text;
+  el.style.color = isError ? "var(--error)" : "";
+}
+
+async function startLogin(destType) {
+  const dest = destinations.find(d => d.type === destType);
+  const who = PROVIDERS[dest.login_provider];
+  try {
+    await saveDestination(destType, true);
+    const login = await api(`/api/destinations/${destType}/login`, { method: "POST" });
+    const host = new URL(login.verification_url).host;
+    document.getElementById("login-title").textContent = `Log in with ${who}`;
+    document.getElementById("login-steps").textContent =
+      `Open ${host} on any device, enter this code, and sign in with your ${who} account.`;
+    document.getElementById("login-code").textContent = login.user_code;
+    const link = document.getElementById("login-link");
+    link.href = login.verification_url;
+    link.textContent = `Open ${host}`;
+    setLoginStatus("Waiting for you to finish signing in…");
+    document.getElementById("login-modal").classList.add("open");
+    clearInterval(loginPoll);
+    loginPoll = setInterval(async () => {
+      try {
+        const s = await api(`/api/destinations/logins/${login.id}`);
+        if (s.status === "connected") {
+          closeLogin();
+          showToast(`${dest.display_name} connected${s.message ? ` as ${s.message}` : ""}`, "ok");
+          fetchDestinations();
+        } else if (s.status === "failed") {
+          clearInterval(loginPoll);
+          setLoginStatus(s.message, true);
+        }
+      } catch (e) {
+        clearInterval(loginPoll);
+        setLoginStatus(e.message, true);
+      }
+    }, 3000);
+  } catch (e) {
+    showToast(e.message, "err");
+  }
+}
+
+function closeLogin() {
+  clearInterval(loginPoll);
+  document.getElementById("login-modal").classList.remove("open");
+}
+
+async function copyLoginCode() {
+  const code = document.getElementById("login-code").textContent;
+  try {
+    await navigator.clipboard.writeText(code);
+    showToast("Code copied", "ok");
+  } catch {
+    // The clipboard API needs HTTPS or localhost; on a LAN IP select the code instead.
+    getSelection().selectAllChildren(document.getElementById("login-code"));
+    showToast("Code selected: press Ctrl+C / ⌘C", "ok");
+  }
+}
+
+async function disconnectDestination(destType) {
+  const dest = destinations.find(d => d.type === destType);
+  if (!confirm(`Disconnect ${dest.display_name}? Backups stop uploading there until you log in again.`)) return;
+  try {
+    await api(`/api/destinations/${destType}/login`, { method: "DELETE" });
+    showToast(`${dest.display_name} disconnected`, "ok");
+    fetchDestinations();
+  } catch (e) {
+    showToast(e.message, "err");
+  }
+}
+
+async function uploadCredentials() {
+  const textarea = document.getElementById("dest-credentials-google_drive");
   const json_content = textarea ? textarea.value.trim() : "";
   if (!json_content) { showToast("Paste credentials JSON first", "err"); return; }
   try {
-    const res = await fetch(`${API}/api/destinations/${destType}/credentials`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ json_content }),
-    });
-    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || "Upload failed"); }
-    const data = await res.json();
+    const data = await api("/api/destinations/google_drive/credentials", sendJson("POST", { json_content }));
     showToast(`Credentials saved (client_id: ${data.client_id})`, "ok");
-    if (textarea) textarea.value = "";
+    textarea.value = "";
     fetchDestinations();
   } catch (e) {
     showToast(e.message, "err");
@@ -391,43 +532,22 @@ async function uploadCredentials(destType) {
 
 async function authorizeGoogleDrive() {
   try {
-    const res = await fetch(`${API}/api/destinations/google_drive/oauth/start`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ redirect_base: window.location.origin }),
-    });
-    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || "Failed to start OAuth"); }
-    const { auth_url } = await res.json();
+    const { auth_url } = await api("/api/destinations/google_drive/oauth/start",
+      sendJson("POST", { redirect_base: window.location.origin }));
     window.open(auth_url, "_blank", "noopener,noreferrer");
-    showToast("Authorization window opened — complete login then return here", "ok");
-    // Poll for completion
+    showToast("Finish signing in in the new tab, then come back here", "ok");
     let polls = 0;
     const poll = setInterval(async () => {
-      polls++;
-      if (polls > 60) { clearInterval(poll); return; }
-      const r = await fetch(`${API}/api/destinations`).catch(() => null);
-      if (!r || !r.ok) return;
-      const dests = await r.json();
-      const gd = dests.find(d => d.type === "google_drive");
-      if (gd && gd.authorized) {
+      if (++polls > 60) { clearInterval(poll); return; }
+      const dests = await api("/api/destinations").catch(() => null);
+      const gd = dests && dests.find(d => d.type === "google_drive");
+      if (gd && gd.login && gd.login.connected) {
         clearInterval(poll);
         destinations = dests;
         renderDestinations(dests);
-        showToast("Google Drive authorized!", "ok");
+        showToast("Google Drive connected", "ok");
       }
     }, 3000);
-  } catch (e) {
-    showToast(e.message, "err");
-  }
-}
-
-async function revokeGoogleDrive() {
-  if (!confirm("Revoke Google Drive authorization?")) return;
-  try {
-    const res = await fetch(`${API}/api/destinations/google_drive/oauth`, { method: "DELETE" });
-    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || "Revoke failed"); }
-    showToast("Authorization revoked", "ok");
-    fetchDestinations();
   } catch (e) {
     showToast(e.message, "err");
   }
@@ -443,7 +563,7 @@ async function fetchSettings() {
     renderSettings(s);
   } catch (e) {
     document.getElementById("settings-panel").innerHTML =
-      `<p style="color:var(--error)">Failed to load settings: ${e.message}</p>`;
+      `<p style="color:var(--error)">Failed to load settings: ${esc(e.message)}</p>`;
   }
 }
 
@@ -452,25 +572,25 @@ function renderSettings(s) {
     <div class="dest-card" style="max-width:420px">
       <div class="field">
         <label>Repeat every N hours <span style="color:var(--muted);font-weight:400">(0 = use daily time below)</span></label>
-        <input type="number" id="setting-interval-hours" value="${s.interval_hours}" min="0" step="1"
+        <input type="number" id="setting-interval-hours" value="${esc(s.interval_hours)}" min="0" step="1"
           style="max-width:120px" />
         <span class="hint">e.g. 6 = run every 6 hours. Set to 0 to run once daily at a fixed time.</span>
       </div>
       <div class="field">
         <label>Daily backup time (HH:MM, 24-hour) <span style="color:var(--muted);font-weight:400">— used when interval = 0</span></label>
-        <input type="text" id="setting-daily-at" value="${s.daily_at}" placeholder="03:30"
+        <input type="text" id="setting-daily-at" value="${esc(s.daily_at)}" placeholder="03:30"
           autocomplete="off" spellcheck="false" style="max-width:120px" />
       </div>
       <div class="field">
         <label>Local retention (days to keep old backups)</label>
-        <input type="number" id="setting-keep-days" value="${s.keep_days}" min="1" step="1"
+        <input type="number" id="setting-keep-days" value="${esc(s.keep_days)}" min="1" step="1"
           style="max-width:120px" />
       </div>
       <div class="field">
-        <label>Google Drive — max backups to keep per service</label>
-        <input type="number" id="setting-drive-keep-count" value="${s.drive_keep_count ?? 3}" min="1" step="1"
+        <label>Copies to keep at each destination (per service)</label>
+        <input type="number" id="setting-remote-keep-count" value="${esc(s.remote_keep_count ?? 3)}" min="1" step="1"
           style="max-width:120px" />
-        <span class="hint">Oldest files beyond this count are deleted from Drive after each upload.</span>
+        <span class="hint">After each upload the oldest copies beyond this count are removed. Files you put there yourself are never touched.</span>
       </div>
       <div class="toggle-row">
         <span class="toggle-label">Run backup on container start</span>
@@ -490,7 +610,7 @@ function renderSettings(s) {
 async function saveSettings() {
   const daily_at = document.getElementById("setting-daily-at").value.trim();
   const keep_days = parseInt(document.getElementById("setting-keep-days").value, 10);
-  const drive_keep_count = parseInt(document.getElementById("setting-drive-keep-count").value, 10);
+  const remote_keep_count = parseInt(document.getElementById("setting-remote-keep-count").value, 10);
   const interval_hours = parseInt(document.getElementById("setting-interval-hours").value, 10) || 0;
   const run_on_start = document.getElementById("setting-run-on-start").checked;
 
@@ -502,15 +622,15 @@ async function saveSettings() {
     showToast("Retention must be at least 1 day", "err");
     return;
   }
-  if (!drive_keep_count || drive_keep_count < 1) {
-    showToast("Drive keep count must be at least 1", "err");
+  if (!remote_keep_count || remote_keep_count < 1) {
+    showToast("Copies to keep must be at least 1", "err");
     return;
   }
   try {
     const res = await fetch(`${API}/api/settings`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ daily_at, interval_hours, run_on_start, keep_days, drive_keep_count }),
+      body: JSON.stringify({ daily_at, interval_hours, run_on_start, keep_days, remote_keep_count }),
     });
     if (!res.ok) {
       const e = await res.json();
@@ -522,15 +642,197 @@ async function saveSettings() {
   }
 }
 
-// ── Init ─────────────────────────────────────────────────────────────────────
+// ── Sign-in ─────────────────────────────────────────────────────────────────
 
-document.addEventListener("DOMContentLoaded", () => {
+let authState = null;
+let appStarted = false;
+
+// Any API call answered with 401 (session expired, signed out elsewhere) brings
+// the sign-in screen back instead of failing silently.
+const nativeFetch = window.fetch.bind(window);
+window.fetch = async (...args) => {
+  const res = await nativeFetch(...args);
+  if (res.status === 401 && !String(args[0]).includes("/api/auth/")) showAuthScreen();
+  return res;
+};
+
+async function checkAuth() {
+  try {
+    authState = await api("/api/auth/status");
+  } catch (e) {
+    showToast("Can't reach the server: " + e.message, "err");
+    return;
+  }
+  if (authState.authenticated) startApp();
+  else showAuthScreen();
+}
+
+function showAuthScreen() {
+  const setup = Boolean(authState && authState.setup_required);
+  const proxy = authState && authState.mode === "proxy";
+  document.getElementById("auth-intro").textContent = proxy
+    ? "This app expects your sign-in proxy (Authelia, Authentik…) to log you in. Open it through the proxy."
+    : setup
+      ? "Create the admin password. You need the one-time setup code from the server logs."
+      : "Enter the admin password.";
+  document.getElementById("setup-code-field").hidden = !setup;
+  document.getElementById("auth-confirm-field").hidden = !setup;
+  const pw = document.getElementById("auth-password");
+  pw.autocomplete = setup ? "new-password" : "current-password";
+  pw.closest(".field").hidden = proxy;
+  document.getElementById("auth-submit").hidden = proxy;
+  document.getElementById("auth-submit").textContent = setup ? "Create password" : "Sign in";
+  document.getElementById("auth-error").textContent = "";
+  document.getElementById("auth-screen").hidden = false;
+  (setup ? document.getElementById("auth-setup-code") : pw).focus();
+}
+
+async function submitAuth(e) {
+  e.preventDefault();
+  const setup = authState.setup_required;
+  const password = document.getElementById("auth-password").value;
+  const error = document.getElementById("auth-error");
+  if (setup && password !== document.getElementById("auth-confirm").value) {
+    error.textContent = "The passwords don't match.";
+    return;
+  }
+  const body = setup
+    ? { setup_code: document.getElementById("auth-setup-code").value, password }
+    : { password };
+  try {
+    await api(setup ? "/api/auth/setup" : "/api/auth/login", sendJson("POST", body));
+  } catch (err) {
+    error.textContent = err.message;
+    return;
+  }
+  document.getElementById("auth-form").reset();
+  document.getElementById("auth-screen").hidden = true;
+  authState = await api("/api/auth/status");
+  startApp();
+}
+
+function startApp() {
+  document.getElementById("logout-btn").hidden = authState.mode !== "password";
   fetchServices();
   fetchDestinations();
   fetchSettings();
-  setInterval(fetchServices, 15000);
-  setInterval(fetchDestinations, 15000);
+  renderSecurity();
+  if (!appStarted) {
+    appStarted = true;
+    setInterval(fetchServices, 15000);
+  }
+}
 
+async function logout() {
+  await api("/api/auth/logout", { method: "POST" }).catch(() => {});
+  location.reload();
+}
+
+function renderSecurity() {
+  const s = authState;
+  const option = (value, label) => `<option value="${value}" ${s.mode === value ? "selected" : ""}>${label}</option>`;
+  document.getElementById("security-panel").innerHTML = `
+    <div class="dest-card" style="max-width:420px">
+      <div class="card-title">Sign-in</div>
+      <div class="field">
+        <label for="auth-mode">How people sign in</label>
+        <select id="auth-mode" onchange="toggleProxyFields()">
+          ${option("password", "Admin password")}
+          ${option("proxy", "My sign-in proxy (Authelia, Authentik…)")}
+          ${option("off", "No sign-in")}
+        </select>
+        <span class="hint" id="auth-mode-hint"></span>
+      </div>
+      <div id="proxy-fields">
+        <div class="field">
+          <label for="auth-proxies">Proxy IP addresses</label>
+          <input id="auth-proxies" value="${esc(s.trusted_proxies)}" placeholder="10.0.0.5, 172.18.0.0/16" spellcheck="false" />
+          <span class="hint">Only requests from these addresses may name the user. Use your proxy's IP.</span>
+        </div>
+        <div class="field">
+          <label for="auth-header">User header</label>
+          <input id="auth-header" value="${esc(s.proxy_header)}" spellcheck="false" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="auth-current">Current admin password</label>
+        <input id="auth-current" type="password" autocomplete="current-password" />
+        <span class="hint">Needed to change any of these settings.</span>
+      </div>
+      <div class="save-row">
+        <button class="btn btn-primary btn-sm" onclick="saveAuthSettings()">Save sign-in settings</button>
+      </div>
+      <details class="advanced">
+        <summary>Change admin password</summary>
+        <div class="field">
+          <label for="auth-new">New password</label>
+          <input id="auth-new" type="password" autocomplete="new-password" />
+        </div>
+        <div class="field">
+          <label for="auth-new-confirm">Repeat new password</label>
+          <input id="auth-new-confirm" type="password" autocomplete="new-password" />
+          <span class="hint">At least 12 characters. Other devices are signed out.</span>
+        </div>
+        <button class="btn btn-secondary btn-sm" style="align-self:flex-start" onclick="changePassword()">Change password</button>
+      </details>
+    </div>`;
+  toggleProxyFields();
+}
+
+function toggleProxyFields() {
+  const mode = document.getElementById("auth-mode").value;
+  document.getElementById("proxy-fields").hidden = mode !== "proxy";
+  document.getElementById("auth-mode-hint").textContent = {
+    password: "Recommended. Sessions last up to 30 days; 5 wrong passwords lock that device out for 15 minutes.",
+    proxy: "If the proxy addresses are wrong you'll be locked out; set AUTH_MODE=password in .env to recover.",
+    off: "Anyone who can reach this page can read and change every credential here. Only use on a network nobody else can reach.",
+  }[mode];
+}
+
+async function saveAuthSettings() {
+  const mode = document.getElementById("auth-mode").value;
+  if (mode === "off" && !confirm("Turn off sign-in? Anyone who can reach this page gets full access.")) return;
+  try {
+    await api("/api/auth/settings", sendJson("PUT", {
+      mode,
+      trusted_proxies: document.getElementById("auth-proxies").value,
+      proxy_header: document.getElementById("auth-header").value,
+      current_password: document.getElementById("auth-current").value,
+    }));
+    showToast("Sign-in settings saved", "ok");
+    authState = await api("/api/auth/status");
+    if (!authState.authenticated) { showAuthScreen(); return; }
+    startApp();
+  } catch (e) {
+    showToast(e.message, "err");
+  }
+}
+
+async function changePassword() {
+  const next = document.getElementById("auth-new").value;
+  if (next !== document.getElementById("auth-new-confirm").value) {
+    showToast("The new passwords don't match", "err");
+    return;
+  }
+  try {
+    await api("/api/auth/password", sendJson("POST", {
+      current_password: document.getElementById("auth-current").value,
+      new_password: next,
+    }));
+    showToast("Password changed. Other devices are signed out.", "ok");
+    renderSecurity();
+  } catch (e) {
+    showToast(e.message, "err");
+  }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+
+document.addEventListener("DOMContentLoaded", () => {
+  checkAuth();
+
+  document.getElementById("auth-form").addEventListener("submit", submitAuth);
+  document.getElementById("logout-btn").addEventListener("click", logout);
   document.getElementById("refresh-btn").addEventListener("click", fetchServices);
 
   document.getElementById("config-modal").addEventListener("click", e => {
@@ -538,6 +840,6 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   document.addEventListener("keydown", e => {
-    if (e.key === "Escape") closeModal();
+    if (e.key === "Escape") { closeModal(); closeLogin(); }
   });
 });

@@ -362,3 +362,45 @@ main { padding: 2rem; max-width: 1140px; margin: 0 auto; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 99px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.22); }
+
+/* ── Destinations: logins, advanced settings, upload results ─────────────── */
+details.advanced          { display: flex; flex-direction: column; gap: .75rem; }
+details.advanced > summary { cursor: pointer; font-size: .8rem; color: var(--muted); margin: .25rem 0; }
+details.advanced[open] > *:not(summary) { margin-top: .6rem; }
+.code-input {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  padding: .5rem .75rem; color: var(--text); font: .8rem/1.4 ui-monospace, monospace;
+  width: 100%; resize: vertical; overflow-x: auto; white-space: pre;
+}
+.dest-card .hint { font-size: .75rem; color: var(--muted); }
+.login-steps  { color: var(--muted); font-size: .9rem; margin: .5rem 0 1rem; }
+.login-code   {
+  font: 600 2.2rem/1.2 ui-monospace, monospace; letter-spacing: .15em; text-align: center;
+  padding: 1rem; border: 1px dashed var(--border-strong); border-radius: 10px; user-select: all;
+}
+.login-status { font-size: .85rem; color: var(--muted); margin-top: 1rem; }
+a.btn         { text-decoration: none; display: inline-flex; align-items: center; }
+.uploads      { display: flex; flex-wrap: wrap; gap: .6rem; }
+.upload-ok    { color: var(--success); }
+.upload-err   { color: var(--error); }
+
+/* ── Sign-in ──────────────────────────────────────────────────────────────── */
+.header-actions { display: flex; gap: .5rem; }
+.auth-screen {
+  position: fixed; inset: 0; z-index: 50; display: grid; place-items: center;
+  background: var(--bg); padding: 16px;
+}
+.auth-screen[hidden] { display: none; }
+.auth-card {
+  width: min(420px, 100%); display: flex; flex-direction: column; gap: 1rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card);
+  padding: 2rem;
+}
+.auth-intro { color: var(--muted); font-size: .9rem; }
+.auth-error { color: var(--error); font-size: .85rem; min-height: 1.2em; }
+.settings-row { display: flex; flex-wrap: wrap; gap: 1.25rem; align-items: flex-start; }
+.field select {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  padding: .45rem .6rem; color: var(--text); font-size: .85rem;
+}
+[hidden] { display: none !important; }

@@ -34,9 +34,7 @@ class N8nWorker(BackupWorker):
         EnvVarSpec(
             key="N8N_API_KEY",
             label="API Key",
-            description=(
-                "n8n API key — Settings → n8n API → Create an API key."
-            ),
+            description=("n8n API key — Settings → n8n API → Create an API key."),
             secret=True,
             required=True,
         ),
@@ -81,8 +79,7 @@ class N8nWorker(BackupWorker):
         output_file.chmod(0o600)
 
         logger.info(
-            f"n8n: {len(workflows)} workflows, {len(tags)} tags, "
-            f"{len(variables)} variables"
+            f"n8n: {len(workflows)} workflows, {len(tags)} tags, {len(variables)} variables"
         )
 
         self.cleanup_old_files(backup_dir, "n8n_*.json", context.retention_days)

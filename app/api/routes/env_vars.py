@@ -26,9 +26,7 @@ def create_router(env_manager: EnvManager, registry: WorkerRegistry) -> APIRoute
         """Return the env var specs and current values for a worker type."""
         worker_class = registry.get_class(service_type)
         if not worker_class:
-            raise HTTPException(
-                status_code=404, detail=f"Unknown worker type '{service_type}'"
-            )
+            raise HTTPException(status_code=404, detail=f"Unknown worker type '{service_type}'")
         env_values = env_manager.read()
         return [
             {
@@ -47,9 +45,7 @@ def create_router(env_manager: EnvManager, registry: WorkerRegistry) -> APIRoute
         """Persist env var updates for a worker after validating the keys."""
         worker_class = registry.get_class(service_type)
         if not worker_class:
-            raise HTTPException(
-                status_code=404, detail=f"Unknown worker type '{service_type}'"
-            )
+            raise HTTPException(status_code=404, detail=f"Unknown worker type '{service_type}'")
         allowed_keys = {spec.key for spec in worker_class.env_var_specs}
         bad_keys = set(body.updates) - allowed_keys
         if bad_keys:

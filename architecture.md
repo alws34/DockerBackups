@@ -2,7 +2,7 @@
 
 ## Overview
 
-Service Backup Agent is a single-container Python service that backs up self-hosted
+Homelab Takeout is a single-container Python service that backs up self-hosted
 applications on a schedule. It exposes a web GUI for configuration and monitoring.
 
 ```

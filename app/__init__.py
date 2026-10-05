@@ -1,1 +1,1 @@
-"""Service backup agent: scheduled, pluggable backups with a web UI."""
+"""Homelab Takeout: scheduled, pluggable backups with a web UI."""

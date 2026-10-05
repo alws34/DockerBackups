@@ -31,9 +31,7 @@ class EnvManager:
         """Apply key/value updates, rewriting existing keys and appending new ones."""
         with self._lock:
             existing_lines = (
-                self.env_file.read_text().splitlines()
-                if self.env_file.exists()
-                else []
+                self.env_file.read_text().splitlines() if self.env_file.exists() else []
             )
             updated_keys: set[str] = set()
             new_lines: list[str] = []

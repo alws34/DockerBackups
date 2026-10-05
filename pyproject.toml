@@ -16,12 +16,11 @@ select = [
 ignore = [
     "S603",   # subprocess calls — intentional in worker base class
     "S607",   # partial executable path — runtime-resolved via shutil.which
-    "ANN101", # missing self annotation — not required in Python 3.12
-    "ANN102", # missing cls annotation
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S", "ANN"]  # security and annotation rules relaxed in tests
+"app/destinations/google_drive.py" = ["ANN401"]  # googleapiclient Resource objects are untyped
 
 [tool.ruff.format]
 quote-style = "double"
@@ -31,3 +30,7 @@ line-ending = "lf"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["app"]
+relative_files = true  # repo-relative paths in coverage.xml, as SonarQube expects

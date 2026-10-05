@@ -23,3 +23,7 @@ the backup fails loudly instead of silently writing empty files.
 |--------------------|----------|---------------------------------------------|
 | `SNIPEIT_URL`      | Yes      | Base URL, e.g. `http://snipeit:80`         |
 | `SNIPEIT_API_KEY`  | Yes      | Token from Settings → API → Create Token   |
+
+## Restoring
+
+This export is a **readable reference**, not a file the app can import directly. To rebuild, set up a fresh instance and re-create the records from the JSON (by hand, or with a short script against the same API endpoints the worker read from).

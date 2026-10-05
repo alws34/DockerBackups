@@ -1,0 +1,151 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Lint and test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Install hash-pinned dependencies
+        run: pip install --require-hashes -r requirements.txt -r requirements-dev.txt
+      - run: ruff check app tests
+      - run: ruff format --check app tests
+      - name: Test with coverage
+        run: pytest --cov=app --cov-report=xml --cov-report=term
+        env:
+          PYTHONPATH: .
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage
+          path: coverage.xml
+          retention-days: 7
+
+  sonar:
+    name: SonarQube Cloud
+    needs: test
+    runs-on: ubuntu-24.04
+    # Secrets are not available to fork PRs or Dependabot; skip instead of failing.
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.SONAR_TOKEN != ''
+        with:
+          fetch-depth: 0 # full history for accurate blame / new-code detection
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: env.SONAR_TOKEN != ''
+        with:
+          name: coverage
+      - uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
+        if: env.SONAR_TOKEN != ''
+
+  docker:
+    name: Docker build and smoke test (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare an empty .env and data dirs
+        run: |
+          : > .env && chmod 600 .env
+          mkdir -p backups logs state
+      - name: Build image (local only, never pushed)
+        run: docker compose build
+      - name: Start with the stock config
+        # Run as the runner's own uid, as a user whose files are not owned by 1000 would.
+        run: PUID="$(id -u)" PGID="$(id -g)" docker compose up -d
+      - name: Wait for healthy
+        run: |
+          for _ in $(seq 1 30); do
+            status="$(docker inspect -f '{{.State.Health.Status}}' homelab-takeout)"
+            echo "health: $status"
+            [ "$status" = healthy ] && exit 0
+            sleep 3
+          done
+          exit 1
+      - name: Probe GUI, API and Bitwarden CLI
+        run: |
+          curl -fsS -o /dev/null http://127.0.0.1:9100/
+          # The API refuses anonymous calls and asks for first-run setup.
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9100/api/services)" = 401
+          curl -fsS http://127.0.0.1:9100/api/auth/status | grep -q '"setup_required":true'
+          docker exec homelab-takeout bw --version
+          test "$(docker exec homelab-takeout id -u)" = "$(id -u)"
+      - name: Container logs
+        if: always()
+        run: docker logs homelab-takeout
+      - name: Stop
+        if: always()
+        run: docker compose down
+
+  systemd-install:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Shellcheck
+        run: shellcheck scripts/*.sh
+      - name: Hardening score (offline)
+        run: scripts/check-service-hardening.sh
+      - name: Install as a systemd service
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-venv
+          sudo ./scripts/install.sh
+      - name: Service is active and the GUI answers
+        run: |
+          for _ in $(seq 60); do
+            if systemctl is-active --quiet homelab-takeout &&
+               curl -sf -o /dev/null http://127.0.0.1:9100/; then
+              break
+            fi
+            sleep 1
+          done
+          systemctl is-active homelab-takeout
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9100/)" = 200
+          systemd-analyze security homelab-takeout --no-pager | tail -n 1
+      - name: Service logs
+        if: failure()
+        run: sudo journalctl -u homelab-takeout --no-pager
+      - name: Uninstall and purge
+        run: |
+          sudo ./scripts/install.sh --uninstall --purge
+          for p in /etc/systemd/system/homelab-takeout.service /opt/homelab-takeout \
+                   /etc/homelab-takeout /var/lib/homelab-takeout /var/log/homelab-takeout; do
+            test ! -e "$p"
+          done
+          if id homelab-takeout 2>/dev/null; then exit 1; fi

@@ -1,0 +1,37 @@
+version: 2
+updates:
+  # Picks up requirements.in/.txt and requirements-dev.in/.txt (pip-compile, with hashes).
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python:
+        patterns: ["*"]
+
+  # Bitwarden CLI (bw/package.json + package-lock.json).
+  - package-ecosystem: npm
+    directory: /bw
+    schedule:
+      interval: weekly
+    groups:
+      bitwarden-cli:
+        patterns: ["*"]
+
+  # Base image digest in the Dockerfile.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      docker:
+        patterns: ["*"]
+
+  # SHA-pinned actions in .github/workflows.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
