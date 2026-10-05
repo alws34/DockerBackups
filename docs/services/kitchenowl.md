@@ -20,3 +20,7 @@ lists, bundled into a `tar.gz`.
 |-----------------------|----------|-----------------------------------------------|
 | `KITCHENOWL_URL`      | Yes      | Base URL, e.g. `http://kitchenowl:80`        |
 | `KITCHENOWL_TOKEN`    | Yes      | Long-lived access token                       |
+
+## Restoring
+
+This export is a **readable reference**, not a file the app can import directly. To rebuild, set up a fresh instance and re-create the records from the JSON (by hand, or with a short script against the same API endpoints the worker read from).

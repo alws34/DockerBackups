@@ -20,3 +20,7 @@ itself. One subfolder per bar inside a single `tar.gz`.
 |----------------------------|----------|-----------------------------------------------------------------------------------------------------------------------|
 | `BAR_ASSISTANT_URL`        | Yes      | Base URL including any path prefix. Salt Rim reverse-proxy: `https://yourdomain.tld/bar`. Direct container: `http://bar-assistant:3000` |
 | `BAR_ASSISTANT_API_KEY`    | Yes      | API token from your user profile                                                                                        |
+
+## Restoring
+
+This export is a **readable reference**, not a file the app can import directly. To rebuild, set up a fresh instance and re-create the records from the JSON (by hand, or with a short script against the same API endpoints the worker read from).

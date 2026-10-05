@@ -25,3 +25,10 @@ separately.
 | `NPM_URL`        | Yes      | Admin UI base URL, e.g. `http://127.0.0.1:81` |
 | `NPM_EMAIL`      | Yes      | Login email of an NPM admin user             |
 | `NPM_PASSWORD`   | Yes      | Password for that user                        |
+
+## Restoring
+
+This export is a **readable reference**, not a file the app can import directly. To rebuild, set up a fresh instance and re-create the records from the JSON (by hand, or with a short script against the same API endpoints the worker read from).
+
+Each host record has the exact domains, forward host/port, SSL and
+advanced-config values needed to re-create it in the NPM UI.

@@ -19,3 +19,8 @@ collection — written as a single JSON file.
 |-------------------------------|----------|------------------------------------------------|
 | `LINKWARDEN_URL`              | Yes      | Base URL, e.g. `http://linkwarden:3000`       |
 | `LINKWARDEN_ACCESS_TOKEN`     | Yes      | Token from Settings → Access Tokens           |
+
+## Restoring
+
+**Native import.** The file is Linkwarden's own migration format. In a
+fresh instance: **Settings → Data → Import → From Linkwarden** and select the file.

@@ -34,3 +34,10 @@ CLI exactly as a user would: log in, unlock, sync, export.
 - The vault is always locked and logged out again after the run, even on failure.
 - Nothing from this step is ever written to logs — commands containing secrets
   are redacted before logging (see `security.md`).
+
+## Restoring
+
+**Native import.** In a fresh vault: **Tools → Import data**, format
+**Bitwarden (json)**, select the file, and enter `VAULTWARDEN_EXPORT_PASSWORD`
+when prompted. All items and folders come back. File attachments are not part
+of any Bitwarden export, so keep those separately.
