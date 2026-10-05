@@ -11,6 +11,10 @@ vanilla JS GUI, Python 3.12 Alpine. Workers produce files; destinations upload t
 
 - `PYTHONPATH=/srv` inside Docker, `PYTHONPATH=.` locally — required for `app.*` imports.
 - `.env` is `chmod 600` enforced on every write; never relax this.
+- **User data must survive updates.** Everything a user creates (settings, secrets, login
+  tokens, run history, backups) lives in `.env`, `config/`, `state/`, `backups/`, `logs/`:
+  bind-mounted and git-ignored. Never ship a tracked file the app writes to, and never
+  write user data anywhere else. `tests/test_user_data.py` enforces the ignore rules.
 - Secrets live ONLY in `.env` or mounted credential files — never in Python source or JSON config.
 - Workers run in `asyncio.to_thread` (blocking); never call blocking I/O directly in `async def`.
 - The container runs as non-root (uid 1000 / `PUID`) with a read-only root filesystem and all

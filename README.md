@@ -115,7 +115,9 @@ fill in each one's URL and API key, and hit **Back up now**. Backups land in
 `./backups/<service>/`.
 
 There's no prebuilt image on purpose: you build from the code you just cloned.
-To update, `git pull` and run the same `docker compose up -d --build`.
+To update, `git pull` and run the same `docker compose up -d --build`. Your settings,
+secrets, logins and backups live in `.env`, `config/`, `state/` and `backups/`, which
+git never tracks, so updates never touch them.
 The timezone defaults to UTC; set `TZ=Europe/Berlin` (or similar) in `.env`.
 
 The container runs as an unprivileged user, uid:gid `1000:1000` by default. If
