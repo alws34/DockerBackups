@@ -51,6 +51,7 @@ def create_default_registry() -> WorkerRegistry:
     from app.workers.linkwarden import LinkwardenWorker
     from app.workers.n8n import N8nWorker
     from app.workers.nginx_proxy_manager import NginxProxyManagerWorker
+    from app.workers.openwebui import OpenWebUIWorker
     from app.workers.snipeit import SnipeItWorker
     from app.workers.spoolman import SpoolmanWorker
     from app.workers.vaultwarden_encrypted_json import VaultwardenEncryptedJsonWorker
@@ -70,6 +71,7 @@ def create_default_registry() -> WorkerRegistry:
         ImmichWorker,
         NginxProxyManagerWorker,
         AdGuardHomeWorker,
+        OpenWebUIWorker,
     ):
         registry.register(worker.worker_type, worker)
     return registry
