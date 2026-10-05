@@ -7,7 +7,7 @@ credentials. The primary threats are:
 
 1. **Secret leakage** — credentials escaping the container into logs, git, or disk.
 2. **Backup file theft** — backup archives being read by unintended processes.
-3. **Unauthorized GUI access** — the web UI has no built-in auth.
+3. **Unauthorized GUI access** — someone else on the network driving the admin GUI.
 4. **Dependency compromise** — a supply-chain attack via a Python package.
 
 ## Secret Handling
@@ -54,29 +54,40 @@ credentials. The primary threats are:
 
 ## Web GUI Security
 
-The GUI has **no built-in authentication**. Treat it as an internal admin panel.
+The GUI holds credentials for every backed-up service, so it is treated as an
+admin panel (OWASP ASVS Level 2 controls):
 
-**Required mitigations before any network exposure:**
+- **Sign-in** (`app/api/auth.py`), mode chosen in Settings → Sign-in:
+  - `password` (default): one admin password, hashed with scrypt
+    (N=2^16, r=8, p=2). It is created on first start with a one-time setup code
+    that is only written to the server logs and `state/setup-code.txt`, so
+    nobody else on the network can claim the account by opening the page first.
+  - `proxy`: an auth proxy (Authelia, Authentik, oauth2-proxy) signs users in;
+    its user header is trusted **only** from `AUTH_TRUSTED_PROXIES`. uvicorn's
+    `X-Forwarded-For` rewriting is off, so the client address can't be spoofed.
+  - `off`: no sign-in, with a warning in the GUI. Only for networks nobody else
+    can reach.
+- **Sessions:** random 256-bit tokens in an `HttpOnly`, `SameSite=Lax` cookie
+  (`Secure` behind HTTPS), stored server-side only as SHA-256 hashes; 7 days
+  idle, 30 days absolute. Changing the password signs out every session.
+  Restarting the app signs everyone out.
+- **Brute force:** 5 wrong passwords lock that client out for 15 minutes.
+- **DNS rebinding:** only Host headers that are IP addresses, `localhost`, or
+  names in `ALLOWED_HOSTS` are served (`app/api/security.py`).
+- **CSRF:** state-changing requests that the browser marks as cross-site
+  (`Sec-Fetch-Site`, falling back to `Origin`) are rejected.
+- **XSS:** everything the API returns is escaped before it reaches the page;
+  `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: no-referrer` and a CSP
+  with `frame-ancestors 'none'`. (A full `script-src` policy needs the GUI to
+  drop its inline event handlers first.)
+- **Secrets are write-only:** the API reports whether a secret is set, never
+  its value.
 
-Option A — Reverse proxy with auth (recommended):
-```nginx
-location / {
-    auth_basic "Homelab Takeout";
-    auth_basic_user_file /etc/nginx/.htpasswd;
-    proxy_pass http://127.0.0.1:8080;
-}
-```
+Still recommended: keep the GUI on your LAN or behind a VPN (Tailscale,
+WireGuard) rather than exposing it to the internet.
 
-Option B — Traefik ForwardAuth (Authelia / Authentik):
-```yaml
-labels:
-  - "traefik.http.routers.backup.middlewares=authelia@docker"
-```
-
-Option C — VPN-only access (Tailscale / WireGuard).
-
-Without one of the above, anyone on the local network can read backup status,
-trigger runs, and update credentials via the GUI.
+**Recovery:** delete `state/auth.json` and restart to get a new setup code;
+set `AUTH_MODE=password` in `.env` if a proxy setting locked you out.
 
 ## Backup File Security
 

@@ -42,8 +42,8 @@ Out of scope:
 
 - The third-party apps Homelab Takeout talks to (Vaultwarden, Immich, n8n, ...):
   report those to their own projects
-- Running the web GUI exposed to an untrusted network without an auth proxy; it
-  has no built-in authentication by design (see [`docs/threat-model.md`](docs/threat-model.md))
+- Running the web GUI with sign-in turned off (`AUTH_MODE=off`) on a network
+  others can reach (see [`docs/threat-model.md`](docs/threat-model.md))
 
 ## Verifying releases
 

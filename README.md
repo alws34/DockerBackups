@@ -211,8 +211,16 @@ guides show how to use it. A restore helper for the 📄 services is on the road
   and a read-only root filesystem; dependencies are hash-pinned
 - Releases are signed with Sigstore and ship SLSA provenance and an SBOM
   ([how to verify](docs/VERIFYING_RELEASES.md))
-- **The web GUI has no built-in authentication.** Keep it on your LAN, or put it
-  behind an auth proxy (Authelia, Authentik, Traefik forward-auth, nginx basic auth)
+- **The GUI asks for an admin password.** On first start the server prints a
+  one-time setup code to its logs (`docker logs homelab-takeout`); only someone
+  who can read those can create the password. Already run Authelia or
+  Authentik? Switch to *My sign-in proxy* in Settings → Sign-in.
+- The GUI also blocks DNS-rebinding and cross-site requests and escapes all data
+  it displays. Still, keep it on your LAN or VPN rather than the open internet.
+
+**Locked out?** Delete `state/auth.json` and restart: a new setup code appears in
+the logs. If the proxy mode is misconfigured, set `AUTH_MODE=password` in `.env`
+and restart.
 
 Full threat model: [`docs/threat-model.md`](docs/threat-model.md). To report a vulnerability, see [`SECURITY.md`](SECURITY.md).
 
