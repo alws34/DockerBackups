@@ -249,7 +249,9 @@ Full threat model: [`docs/threat-model.md`](docs/threat-model.md). To report a v
 3. Implement `run(context) -> BackupResult`. Most workers just call `fetch_json()`
    and `archive_json()` from the base class
 4. Register it in `app/core/registry.py → create_default_registry()`
-5. Add a guide under `docs/services/` (the app shows up in the GUI's app picker)
+5. Add its logo as `app/api/static/icons/<worker_type>.svg`, from
+   [dashboard-icons](https://github.com/homarr-labs/dashboard-icons)
+6. Add a guide under `docs/services/` (the app shows up in the GUI's app picker)
 
 The GUI picks up new workers automatically. [`app/workers/spoolman.py`](app/workers/spoolman.py)
 is a complete 48-line example.

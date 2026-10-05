@@ -17,7 +17,7 @@ class VaultwardenEncryptedJsonWorker(BackupWorker):
     """Produce an encrypted JSON vault export using the ``bw`` Bitwarden CLI."""
 
     worker_type: ClassVar[str] = "vaultwarden_encrypted_json"
-    display_name: ClassVar[str] = "Vaultwarden (Encrypted JSON)"
+    display_name: ClassVar[str] = "Vaultwarden"
     description: ClassVar[str] = "Daily encrypted JSON vault export using the Bitwarden CLI."
     env_var_specs: ClassVar[list[EnvVarSpec]] = [
         EnvVarSpec(

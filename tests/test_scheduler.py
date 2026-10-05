@@ -163,3 +163,21 @@ def test_first_start_after_upgrade_restores_configured_apps(tmp_path: Path):
     scheduler = BackupScheduler(str(config), create_default_registry(), EnvManager(env_file))
     scheduler.load_config()
     assert [s["name"] for s in json.loads(config.read_text())["services"]] == ["snipeit"]
+
+
+def test_state_keeps_a_capped_run_history(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("STATE_ROOT", str(tmp_path / "state"))
+    scheduler = BackupScheduler(str(tmp_path / "services.json"), create_default_registry())
+    for i in range(35):
+        ok = i % 2 == 0
+        scheduler._write_state(
+            "svc",
+            {
+                "success": ok,
+                "finished_at": f"run-{i}",
+                "uploads": {"sftp": {"ok": i % 4 == 0}},
+            },
+        )
+    history = scheduler.get_state("svc")["history"]
+    assert len(history) == 30 and history[-1]["finished_at"] == "run-34"
+    assert history[-1] == {"finished_at": "run-34", "success": True, "delivered": False}

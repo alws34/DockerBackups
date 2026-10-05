@@ -13,26 +13,27 @@
   <div class="wrap">
     <header class="top">
       <h1 class="wordmark">Homelab Takeout</h1>
-      <div class="next" id="next-run"></div>
       <div class="spacer"></div>
       <nav id="top-nav" hidden>
-        <button class="btn primary" id="run-all">Back up all now</button>
+        <button class="btn primary" data-act="catalog">Add a service</button>
+        <button class="btn" id="run-all">Back up all now</button>
         <button class="btn quiet" id="open-settings">Settings</button>
         <button class="btn quiet" id="logout-btn" hidden>Log out</button>
       </nav>
     </header>
 
     <main id="app" hidden>
-      <section class="summary" aria-live="polite">
-        <h2 id="sum-title">Loading…</h2>
-        <ul id="sum-list"></ul>
+      <p class="statusbar" id="statusbar" aria-live="polite">Loading…</p>
+
+      <section>
+        <h2 class="section">Services</h2>
+        <div class="grid" id="svc-grid"></div>
       </section>
 
-      <div class="section-head"><h3>Your services</h3><span class="count" id="svc-count"></span></div>
-      <div class="grid" id="svc-grid"></div>
-
-      <div class="section-head"><h3>Where backups go</h3><span class="count" id="dst-count"></span></div>
-      <div class="grid" id="dst-grid"></div>
+      <section>
+        <h2 class="section">Destinations</h2>
+        <div class="chips" id="dst-row"></div>
+      </section>
     </main>
 
     <div id="auth-screen" class="auth-screen" hidden>
@@ -63,6 +64,7 @@
 
   <dialog id="detail" aria-labelledby="detail-name">
     <div class="d-head">
+      <img id="detail-icon" class="logo" alt="" width="32" height="32" />
       <h3 id="detail-name"></h3>
       <span id="detail-badge"></span>
       <div class="spacer"></div>
@@ -90,6 +92,15 @@
       <input class="search" id="cat-q" type="search" placeholder="Search apps" aria-label="Search apps" />
       <div class="cat-list" id="cat-list"></div>
       <p class="muted small">Missing your app? Each one is a single Python file; see CONTRIBUTING.md.</p>
+      <div class="d-actions"><button class="btn" data-close>Done</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="dest-picker">
+    <div class="d-in">
+      <h3>Add a destination</h3>
+      <p class="muted">Where should copies of your backups go? Pick one to set it up.</p>
+      <div class="cat-list" id="dest-list"></div>
       <div class="d-actions"><button class="btn" data-close>Done</button></div>
     </div>
   </dialog>

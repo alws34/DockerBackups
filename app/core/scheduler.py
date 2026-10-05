@@ -23,6 +23,7 @@ _DEFAULT_DAILY_AT = "03:30"
 _DEFAULT_KEEP_DAYS = 30
 _DEFAULT_REMOTE_KEEP_COUNT = 3
 _STATE_FILENAME = "last_result.json"
+_HISTORY_LENGTH = 30
 _SECONDS_PER_HOUR = 3600
 _UPLOAD_TIMEOUT_SECONDS = 30 * 60
 
@@ -292,7 +293,15 @@ class BackupScheduler:
         return (target - now).total_seconds()
 
     def _write_state(self, service_name: str, state: dict[str, Any]) -> None:
-        """Write a service's last-run state to its state file, creating dirs."""
+        """Write a service's last-run state, keeping a short history of earlier runs."""
+        previous = self.get_state(service_name) or {}
+        uploads = state.get("uploads", {})
+        run = {
+            "finished_at": state["finished_at"],
+            "success": state["success"],
+            "delivered": state["success"] and all(u.get("ok") for u in uploads.values()),
+        }
+        state["history"] = [*previous.get("history", []), run][-_HISTORY_LENGTH:]
         state_dir = _state_root() / service_name
         state_dir.mkdir(parents=True, exist_ok=True)
         (state_dir / _STATE_FILENAME).write_text(json.dumps(state, indent=2))

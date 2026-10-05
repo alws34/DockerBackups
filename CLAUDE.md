@@ -63,7 +63,10 @@ tests/              — pytest unit tests; no live network or Docker required
 2. Set class attributes: `worker_type`, `display_name`, `description`, `env_var_specs`.
 3. Implement `run(context: BackupContext) -> BackupResult`.
 4. Register in `app/core/registry.py → create_default_registry()`.
-5. Users add it from the GUI's app picker (**+ Add a service**); no `services.json` edit needed.
+5. Add the app's logo as `app/api/static/icons/<worker_type>.svg` (or `.png`, ≤ 96 px).
+   Take it from [dashboard-icons](https://github.com/homarr-labs/dashboard-icons)
+   (`svg/<app>.svg`), never hotlink it. `tests/test_icons.py` fails without one.
+6. Users add it from the GUI's app picker (**+ Add a service**); no `services.json` edit needed.
 
 The GUI loads metadata dynamically — no frontend changes needed.
 
@@ -75,8 +78,9 @@ The GUI loads metadata dynamically — no frontend changes needed.
    match `<service>_...`.
 2. Declare settings as `env_var_specs` (secrets `secret=True`); store tokens/keys
    only via `write_private()` under `state_dir(env)`.
-3. Add it to `ALL_DESTINATIONS` in `app/destinations/registry.py` and write
-   `docs/destinations/<name>.md`. The GUI renders it automatically.
+3. Add it to `ALL_DESTINATIONS` in `app/destinations/registry.py`, add its logo as
+   `app/api/static/icons/<destination_type>.svg` (same source as worker logos) and
+   write `docs/destinations/<name>.md`. The GUI renders it automatically.
 
 ## Environment Variables
 

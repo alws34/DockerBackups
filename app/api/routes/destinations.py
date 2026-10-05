@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
+from app.api.icons import icon_url
 from app.core.context import BackupError
 from app.core.env_manager import EnvManager
 from app.core.scheduler import BackupScheduler
@@ -78,6 +79,7 @@ def create_router(env_manager: EnvManager, scheduler: BackupScheduler) -> APIRou
             "type": dest_class.destination_type,
             "display_name": dest_class.display_name,
             "description": dest_class.description,
+            "icon": icon_url(dest_class.destination_type),
             "enabled_key": dest_class.enabled_key(),
             "enabled": is_enabled(dest_class, scheduler.get_config(), env),
             "login_provider": dest_class.login_provider,
