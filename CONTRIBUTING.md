@@ -5,7 +5,8 @@ Issues and pull requests are welcome, especially new workers and restore helpers
 ## Workflow
 
 1. Open an issue first for anything bigger than a small fix, so we can agree on the approach.
-2. Create one branch per change and open a pull request against `main`.
+2. Create one branch per change and open a pull request against `dev`. `main` only
+   receives tested changes from `dev`, and tagged releases are cut from `main`.
 3. Keep PRs focused; CI (lint, tests, Docker build, CodeQL) must pass before merge.
 
 ## Local checks

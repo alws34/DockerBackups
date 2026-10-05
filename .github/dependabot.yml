@@ -1,10 +1,12 @@
 version: 2
-# Monthly, one PR per ecosystem; security fixes arrive as soon as an alert opens,
-# also grouped into one PR per ecosystem.
+# Version updates: monthly, one PR per ecosystem, into dev (dev reaches main through a
+# tested PR). Security fixes open as soon as an alert does, grouped per ecosystem; GitHub
+# always opens those against the default branch (main), whatever target-branch says.
 updates:
   # Picks up requirements.in/.txt and requirements-dev.in/.txt (pip-compile, with hashes).
   - package-ecosystem: pip
     directory: /
+    target-branch: dev
     schedule:
       interval: monthly
     groups:
@@ -17,6 +19,7 @@ updates:
   # Bitwarden CLI (bw/package.json + package-lock.json).
   - package-ecosystem: npm
     directory: /bw
+    target-branch: dev
     schedule:
       interval: monthly
     groups:
@@ -29,6 +32,7 @@ updates:
   # Base image digest in the Dockerfile.
   - package-ecosystem: docker
     directory: /
+    target-branch: dev
     schedule:
       interval: monthly
     groups:
@@ -41,6 +45,7 @@ updates:
   # SHA-pinned actions in .github/workflows.
   - package-ecosystem: github-actions
     directory: /
+    target-branch: dev
     schedule:
       interval: monthly
     groups:
