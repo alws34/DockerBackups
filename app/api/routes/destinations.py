@@ -198,7 +198,7 @@ def create_router(env_manager: EnvManager) -> APIRouter:
         return HTMLResponse(
             "<html><body style='font-family:sans-serif;text-align:center;padding:3rem'>"
             "<h2>&#10003; Google Drive authorized successfully!</h2>"
-            "<p>You can close this tab and return to the backup agent.</p>"
+            "<p>You can close this tab and return to Homelab Takeout.</p>"
             "<script>setTimeout(()=>window.close(),2000)</script>"
             "</body></html>"
         )

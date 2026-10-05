@@ -1,1 +1,1 @@
-"""Shared pytest fixtures for the backup agent test suite."""
+"""Shared pytest fixtures for the Homelab Takeout test suite."""

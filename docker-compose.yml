@@ -1,10 +1,10 @@
 services:
-  service-backup-agent:
+  homelab-takeout:
     build:
       context: .
       dockerfile: Dockerfile
 
-    container_name: service-backup-agent
+    container_name: homelab-takeout
     restart: unless-stopped
 
     env_file:
@@ -16,7 +16,7 @@ services:
       LOG_ROOT: /logs
       STATE_ROOT: /state
       ENV_FILE: /app-env/.env
-      TZ: Asia/Jerusalem
+      TZ: ${TZ:-UTC}
       WEB_PORT: "9100"
 
     network_mode: host

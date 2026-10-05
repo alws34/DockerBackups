@@ -1,10 +1,10 @@
-# CLAUDE.md — Service Backup Agent
+# CLAUDE.md — Homelab Takeout
 
 Guidance for Claude Code when working in this repository.
 
 ## Project at a Glance
 
-Modular Docker backup agent for self-hosted services. FastAPI + asyncio web server,
+Homelab Takeout: scheduled API-based exports of self-hosted services. FastAPI + asyncio web server,
 vanilla JS GUI, Python 3.12 Alpine. Workers produce files; destinations upload them.
 
 ## Key Invariants — Never Break These
@@ -13,7 +13,7 @@ vanilla JS GUI, Python 3.12 Alpine. Workers produce files; destinations upload t
 - `.env` is `chmod 600` enforced on every write; never relax this.
 - Secrets live ONLY in `.env` or mounted credential files — never in Python source or JSON config.
 - Workers run in `asyncio.to_thread` (blocking); never call blocking I/O directly in `async def`.
-- Tests must stay at 29 passing. Run `pytest tests/ -x -q` before any commit.
+- All tests must pass (44 at last count). Run `pytest tests/ -x -q` before any commit.
 
 ## Stack
 
@@ -104,7 +104,7 @@ Open http://localhost:8080.
 ```bash
 docker compose build
 docker compose up -d
-docker logs -f service-backup-agent
+docker logs -f homelab-takeout
 ```
 
 ## What NOT to Do

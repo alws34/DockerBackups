@@ -56,7 +56,7 @@ async def main() -> None:
     )
     server = uvicorn.Server(uvicorn_config)
 
-    logger.info(f"Starting backup agent | config={config_file} | web=http://0.0.0.0:{port}")
+    logger.info(f"Starting Homelab Takeout | config={config_file} | web=http://0.0.0.0:{port}")
 
     await asyncio.gather(
         scheduler.run_forever(),
