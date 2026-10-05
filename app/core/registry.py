@@ -49,6 +49,7 @@ def create_default_registry() -> WorkerRegistry:
     from app.workers.karakeep import KarakeepWorker
     from app.workers.kitchenowl import KitchenOwlWorker
     from app.workers.linkwarden import LinkwardenWorker
+    from app.workers.manyfold import ManyfoldWorker
     from app.workers.n8n import N8nWorker
     from app.workers.nginx_proxy_manager import NginxProxyManagerWorker
     from app.workers.snipeit import SnipeItWorker
@@ -72,6 +73,7 @@ def create_default_registry() -> WorkerRegistry:
         NginxProxyManagerWorker,
         AdGuardHomeWorker,
         SparkyFitnessWorker,
+        ManyfoldWorker,
     ):
         registry.register(worker.worker_type, worker)
     return registry
