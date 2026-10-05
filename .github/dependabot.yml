@@ -20,6 +20,12 @@ updates:
   - package-ecosystem: npm
     directory: /bw
     target-branch: dev
+    ignore:
+      # Bitwarden CLI 2026.9.x can't unlock against Vaultwarden: its user key id
+      # backfill calls an endpoint Vaultwarden doesn't have (404). Lift this once
+      # Vaultwarden supports it, and test the Vaultwarden worker against a real server.
+      - dependency-name: "@bitwarden/cli"
+        versions: [">2026.5.0"]
     schedule:
       interval: monthly
     groups:
