@@ -414,7 +414,7 @@ async function removeService(svc) {
 async function runService(svc) {
   await api(`/api/services/${svc.name}/trigger`, { method: "POST" });
   toast(`Backing up ${svc.display_name}…`);
-  setTimeout(refresh, 1500);
+  setTimeout(() => void refresh(), 1500);
 }
 
 async function openCatalog() {
@@ -519,7 +519,7 @@ async function startLogin(dest, tile) {
       if (s.status === "connected") {
         $("#login-modal").close();
         toast(`${dest.display_name} connected${s.message ? ` as ${s.message}` : ""}`);
-        refresh();
+        void refresh();
       } else if (s.status === "failed") {
         clearInterval(loginPoll);
         setLoginStatus(s.message, true);
@@ -586,7 +586,7 @@ async function authorizeOwnGoogleClient() {
     if (dests?.find(d => d.type === "google_drive")?.login?.connected) {
       clearInterval(poll);
       toast("Google Drive connected");
-      refresh();
+      void refresh();
     }
   }, 3000);
 }
@@ -725,7 +725,7 @@ function startApp() {
   $("#top-nav").hidden = false;
   $("#logout-btn").hidden = authState.mode !== "password";
   api("/api/settings").then(showSchedule).catch(() => {});
-  refresh();
+  void refresh();
   clearInterval(refreshTimer);
   refreshTimer = setInterval(refresh, 15000);
 }
@@ -811,7 +811,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const r = await api("/api/services/trigger-all", { method: "POST" });
     const n = r.triggered.length;
     toast(n ? `Backing up ${plural(n, "service")}…` : "Nothing to back up: no enabled service is idle", !n);
-    if (n) setTimeout(refresh, 1500);
+    if (n) setTimeout(() => void refresh(), 1500);
   }));
   $("#open-settings").addEventListener("click", guarded(openSettings));
   $("#schedule-form").addEventListener("submit", guarded(saveSchedule));
@@ -822,5 +822,5 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#login-modal").addEventListener("close", () => clearInterval(loginPoll));
   $("#detail").addEventListener("close", () => { openTile = null; });
   $("#cat-q").addEventListener("input", renderCatalog);
-  checkAuth();
+  void checkAuth();
 });

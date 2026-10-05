@@ -40,7 +40,8 @@
       <form id="auth-form" class="auth-card">
         <h2 id="auth-heading">Sign in</h2>
         <p id="auth-intro" class="muted"></p>
-        <input type="text" name="username" value="admin" autocomplete="username" hidden />
+        <label for="auth-username" hidden>Username</label>
+        <input id="auth-username" type="text" name="username" value="admin" autocomplete="username" hidden />
         <div class="field" id="setup-code-field" hidden>
           <label for="auth-setup-code">Setup code</label>
           <input id="auth-setup-code" autocomplete="one-time-code" spellcheck="false" />
