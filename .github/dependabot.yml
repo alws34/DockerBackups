@@ -1,37 +1,51 @@
 version: 2
+# Monthly, one PR per ecosystem; security fixes arrive as soon as an alert opens,
+# also grouped into one PR per ecosystem.
 updates:
   # Picks up requirements.in/.txt and requirements-dev.in/.txt (pip-compile, with hashes).
   - package-ecosystem: pip
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     groups:
       python:
+        patterns: ["*"]
+      python-security:
+        applies-to: security-updates
         patterns: ["*"]
 
   # Bitwarden CLI (bw/package.json + package-lock.json).
   - package-ecosystem: npm
     directory: /bw
     schedule:
-      interval: weekly
+      interval: monthly
     groups:
       bitwarden-cli:
+        patterns: ["*"]
+      bitwarden-cli-security:
+        applies-to: security-updates
         patterns: ["*"]
 
   # Base image digest in the Dockerfile.
   - package-ecosystem: docker
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     groups:
       docker:
+        patterns: ["*"]
+      docker-security:
+        applies-to: security-updates
         patterns: ["*"]
 
   # SHA-pinned actions in .github/workflows.
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     groups:
       actions:
+        patterns: ["*"]
+      actions-security:
+        applies-to: security-updates
         patterns: ["*"]
