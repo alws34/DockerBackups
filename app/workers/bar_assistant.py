@@ -40,8 +40,7 @@ class BarAssistantWorker(BackupWorker):
     worker_type: ClassVar[str] = "bar_assistant"
     display_name: ClassVar[str] = "Bar Assistant"
     description: ClassVar[str] = (
-        "Exports cocktails, ingredients, glasses, tags and more "
-        "via Bar Assistant REST API."
+        "Exports cocktails, ingredients, glasses, tags and more via Bar Assistant REST API."
     )
     env_var_specs: ClassVar[list[EnvVarSpec]] = [
         EnvVarSpec(
@@ -95,8 +94,7 @@ class BarAssistantWorker(BackupWorker):
                 return resp.json()
             except ValueError as e:
                 raise BackupError(
-                    f"Non-JSON response from {url} (status {resp.status_code}): "
-                    f"{resp.text[:300]!r}"
+                    f"Non-JSON response from {url} (status {resp.status_code}): {resp.text[:300]!r}"
                 ) from e
 
         # Fetch bars to get bar ID(s)
@@ -152,8 +150,7 @@ class BarAssistantWorker(BackupWorker):
             worker_type=self.worker_type,
             success=True,
             message=(
-                f"{total_records} records exported: {archive.name} "
-                f"({archive.stat().st_size} bytes)"
+                f"{total_records} records exported: {archive.name} ({archive.stat().st_size} bytes)"
             ),
             output_files=[archive],
             started_at=started_at,

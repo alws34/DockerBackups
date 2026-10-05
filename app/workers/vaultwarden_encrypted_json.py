@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime
-from pathlib import Path
 from typing import ClassVar
 
 from app.core.context import BackupContext, BackupError, BackupResult
@@ -126,13 +125,27 @@ class VaultwardenEncryptedJsonWorker(BackupWorker):
             self.run_command([bw, "sync"], env=session_env)
 
             self.run_command(
-                [bw, "export", "--format", "encrypted_json",
-                 "--password", export_password,
-                 "--output", str(output_file)],
+                [
+                    bw,
+                    "export",
+                    "--format",
+                    "encrypted_json",
+                    "--password",
+                    export_password,
+                    "--output",
+                    str(output_file),
+                ],
                 env=session_env,
-                redacted_command=[bw, "export", "--format", "encrypted_json",
-                                  "--password", "[redacted]",
-                                  "--output", str(output_file)],
+                redacted_command=[
+                    bw,
+                    "export",
+                    "--format",
+                    "encrypted_json",
+                    "--password",
+                    "[redacted]",
+                    "--output",
+                    str(output_file),
+                ],
             )
 
             if not output_file.exists() or output_file.stat().st_size == 0:

@@ -21,16 +21,13 @@ class LinkwardenWorker(BackupWorker):
     worker_type: ClassVar[str] = "linkwarden"
     display_name: ClassVar[str] = "Linkwarden"
     description: ClassVar[str] = (
-        "Full export of bookmarks and collections "
-        "via Linkwarden API migration endpoint."
+        "Full export of bookmarks and collections via Linkwarden API migration endpoint."
     )
     env_var_specs: ClassVar[list[EnvVarSpec]] = [
         EnvVarSpec(
             key="LINKWARDEN_URL",
             label="Linkwarden URL",
-            description=(
-                "Base URL of your Linkwarden instance (e.g. http://linkwarden:3000)."
-            ),
+            description=("Base URL of your Linkwarden instance (e.g. http://linkwarden:3000)."),
             secret=False,
             required=True,
         ),
@@ -38,8 +35,7 @@ class LinkwardenWorker(BackupWorker):
             key="LINKWARDEN_ACCESS_TOKEN",
             label="Access Token",
             description=(
-                "Access token from Linkwarden Settings → "
-                "Access Tokens → New Access Token."
+                "Access token from Linkwarden Settings → Access Tokens → New Access Token."
             ),
             secret=True,
             required=True,

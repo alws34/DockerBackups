@@ -49,7 +49,7 @@ async def main() -> None:
     port = int(os.environ.get("WEB_PORT", "8080"))
     uvicorn_config = uvicorn.Config(
         app,
-        host="0.0.0.0",
+        host="0.0.0.0",  # noqa: S104 — container network; GUI must be reachable from host
         port=port,
         log_level="warning",
         access_log=False,

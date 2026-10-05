@@ -26,9 +26,7 @@ def create_app(
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-    app.include_router(
-        services.create_router(scheduler, registry, env_manager), prefix="/api"
-    )
+    app.include_router(services.create_router(scheduler, registry, env_manager), prefix="/api")
     app.include_router(logs.create_router(), prefix="/api")
     app.include_router(env_vars.create_router(env_manager, registry), prefix="/api")
     app.include_router(destinations.create_router(env_manager), prefix="/api")

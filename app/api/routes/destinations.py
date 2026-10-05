@@ -51,8 +51,7 @@ def create_router(env_manager: EnvManager) -> APIRouter:
         result = []
         for dest_class in ALL_DESTINATIONS:
             env_var_info = [
-                spec.describe(env_values.get(spec.key, ""))
-                for spec in dest_class.env_var_specs
+                spec.describe(env_values.get(spec.key, "")) for spec in dest_class.env_var_specs
             ]
             enabled_raw = env_values.get(ENABLED_ENV, "").strip().lower()
             creds_path = Path(os.environ.get("GOOGLE_CREDENTIALS_FILE", str(_CREDS_PATH)))
@@ -71,17 +70,11 @@ def create_router(env_manager: EnvManager) -> APIRouter:
         return result
 
     @router.put("/destinations/{dest_type}/env-vars")
-    async def update_destination_env_vars(
-        dest_type: str, body: DestinationEnvVarUpdate
-    ) -> dict:
+    async def update_destination_env_vars(dest_type: str, body: DestinationEnvVarUpdate) -> dict:
         """Persist env var updates for a destination after validating the keys."""
-        dest_class = next(
-            (d for d in ALL_DESTINATIONS if d.destination_type == dest_type), None
-        )
+        dest_class = next((d for d in ALL_DESTINATIONS if d.destination_type == dest_type), None)
         if dest_class is None:
-            raise HTTPException(
-                status_code=404, detail=f"Unknown destination type '{dest_type}'"
-            )
+            raise HTTPException(status_code=404, detail=f"Unknown destination type '{dest_type}'")
         allowed_keys = {spec.key for spec in dest_class.env_var_specs}
         bad_keys = set(body.updates) - allowed_keys
         if bad_keys:
@@ -105,7 +98,7 @@ def create_router(env_manager: EnvManager) -> APIRouter:
             raise HTTPException(
                 status_code=400,
                 detail="Invalid client credentials JSON. Expected an OAuth2 client secret "
-                       "(must have 'web' or 'installed' key, not a service account).",
+                "(must have 'web' or 'installed' key, not a service account).",
             )
         required = {"client_id", "client_secret", "token_uri"}
         missing = required - set(client_info)
@@ -137,13 +130,16 @@ def create_router(env_manager: EnvManager) -> APIRouter:
 
         try:
             from google_auth_oauthlib.flow import Flow
+
             flow = Flow.from_client_secrets_file(
                 str(creds_path), scopes=_SCOPES, redirect_uri=redirect_uri
             )
             code_verifier = secrets.token_urlsafe(48)
-            code_challenge = base64.urlsafe_b64encode(
-                hashlib.sha256(code_verifier.encode()).digest()
-            ).rstrip(b"=").decode()
+            code_challenge = (
+                base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode()).digest())
+                .rstrip(b"=")
+                .decode()
+            )
             auth_url, state = flow.authorization_url(
                 access_type="offline",
                 prompt="consent",
@@ -151,9 +147,7 @@ def create_router(env_manager: EnvManager) -> APIRouter:
                 code_challenge_method="S256",
             )
         except Exception as e:  # noqa: BLE001 - surface any Google flow error to the UI
-            raise HTTPException(
-                status_code=500, detail=f"Failed to build auth URL: {e}"
-            ) from e
+            raise HTTPException(status_code=500, detail=f"Failed to build auth URL: {e}") from e
 
         _pending_oauth[state] = {
             "redirect_uri": redirect_uri,
@@ -178,6 +172,7 @@ def create_router(env_manager: EnvManager) -> APIRouter:
 
         try:
             from google_auth_oauthlib.flow import Flow
+
             flow = Flow.from_client_secrets_file(
                 str(creds_path), scopes=_SCOPES, redirect_uri=redirect_uri
             )
