@@ -53,7 +53,10 @@ def create_router(env_manager: EnvManager, registry: WorkerRegistry) -> APIRoute
                 status_code=400,
                 detail=f"Unknown env var keys for '{service_type}': {bad_keys}",
             )
-        env_manager.update(body.updates)
+        try:
+            env_manager.update(body.updates)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
         return {"status": "saved", "updated_keys": list(body.updates)}
 
     return router

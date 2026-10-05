@@ -64,3 +64,11 @@ def test_comments_preserved(tmp_path: Path) -> None:
     mgr.update({"KEY": "new"})
     content = f.read_text()
     assert "# This is a comment" in content
+
+
+def test_update_rejects_values_that_would_add_lines(tmp_path):
+    env = EnvManager(tmp_path / ".env")
+    env.update({"WIKIJS_URL": "http://wiki"})
+    with pytest.raises(ValueError):
+        env.update({"WIKIJS_API_TOKEN": "x\nAUTH_MODE=off"})
+    assert env.read() == {"WIKIJS_URL": "http://wiki"}

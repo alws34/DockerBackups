@@ -28,7 +28,14 @@ class EnvManager:
         return result
 
     def update(self, updates: dict[str, str]) -> None:
-        """Apply key/value updates, rewriting existing keys and appending new ones."""
+        """Apply key/value updates, rewriting existing keys and appending new ones.
+
+        Raises ``ValueError`` for a value with a line break or NUL: written as-is it
+        would end the line and could smuggle another setting into the file.
+        """
+        for key, value in updates.items():
+            if any(c in value for c in "\r\n\0"):
+                raise ValueError(f"{key} can't contain line breaks.")
         with self._lock:
             existing_lines = (
                 self.env_file.read_text().splitlines() if self.env_file.exists() else []

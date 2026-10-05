@@ -113,7 +113,10 @@ def create_router(env_manager: EnvManager, scheduler: BackupScheduler) -> APIRou
             raise HTTPException(
                 status_code=400, detail=f"Unknown settings for '{dest_type}': {bad_keys}"
             )
-        await asyncio.to_thread(env_manager.update, body.updates)
+        try:
+            await asyncio.to_thread(env_manager.update, body.updates)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
         return {"status": "saved", "updated_keys": list(body.updates)}
 
     @router.post("/destinations/{dest_type}/test")

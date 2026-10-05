@@ -18,7 +18,7 @@ WORKDIR /srv
 # Hash-checked install from the pinned lock file. Every dependency ships a musllinux
 # wheel, so no compiler is needed.
 COPY requirements.txt /srv/requirements.txt
-RUN pip install --no-cache-dir --require-hashes -r /srv/requirements.txt
+RUN pip install --no-cache-dir --only-binary :all: --require-hashes -r /srv/requirements.txt
 
 COPY app/ /srv/app/
 # COPY keeps the build machine's permissions; a strict umask (or a synced folder) would

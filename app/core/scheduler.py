@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -24,6 +25,8 @@ _DEFAULT_KEEP_DAYS = 30
 _DEFAULT_REMOTE_KEEP_COUNT = 3
 _STATE_FILENAME = "last_result.json"
 _HISTORY_LENGTH = 30
+# Service names become folder names under /state and /backups.
+_SAFE_NAME = re.compile(r"[A-Za-z0-9_-]{1,64}")
 _SECONDS_PER_HOUR = 3600
 _UPLOAD_TIMEOUT_SECONDS = 30 * 60
 
@@ -162,6 +165,8 @@ class BackupScheduler:
 
     def get_state(self, service_name: str) -> dict | None:
         """Return the last persisted result for a service, or ``None``."""
+        if not _SAFE_NAME.fullmatch(service_name):
+            return None
         state_file = _state_root() / service_name / _STATE_FILENAME
         if not state_file.exists():
             return None
@@ -197,6 +202,9 @@ class BackupScheduler:
         already running or the run raised an error (which is logged and recorded).
         """
         name = service_config["name"]
+        if not _SAFE_NAME.fullmatch(name):
+            logger.error(f"Skipping service {name!r}: names may only use letters, digits, - and _")
+            return None
         if self._running.get(name):
             logger.warning(f"[{name}] Already running, skipping")
             return None
@@ -294,6 +302,10 @@ class BackupScheduler:
 
     def _write_state(self, service_name: str, state: dict[str, Any]) -> None:
         """Write a service's last-run state, keeping a short history of earlier runs."""
+        if not _SAFE_NAME.fullmatch(service_name):
+            raise BackupError(
+                f"Service name {service_name!r} may only use letters, digits, - and _"
+            )
         previous = self.get_state(service_name) or {}
         uploads = state.get("uploads", {})
         run = {
