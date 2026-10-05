@@ -59,6 +59,7 @@ def create_default_registry() -> WorkerRegistry:
     from app.workers.openwebui import OpenWebUIWorker
     from app.workers.snipeit import SnipeItWorker
     from app.workers.spoolman import SpoolmanWorker
+    from app.workers.uptimekuma import UptimeKumaWorker
     from app.workers.vaultwarden_encrypted_json import VaultwardenEncryptedJsonWorker
     from app.workers.wikijs import WikiJsWorker
 
@@ -82,6 +83,7 @@ def create_default_registry() -> WorkerRegistry:
         HomeAssistantWorker,
         OpenWebUIWorker,
         JellyfinWorker,
+        UptimeKumaWorker,
     ):
         registry.register(worker.worker_type, worker)
     return registry
