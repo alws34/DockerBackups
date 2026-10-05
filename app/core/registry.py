@@ -53,6 +53,7 @@ def create_default_registry() -> WorkerRegistry:
     from app.workers.nginx_proxy_manager import NginxProxyManagerWorker
     from app.workers.plex import PlexWorker
     from app.workers.openproject import OpenProjectWorker
+    from app.workers.qbittorrent import QBittorrentWorker
     from app.workers.snipeit import SnipeItWorker
     from app.workers.spoolman import SpoolmanWorker
     from app.workers.vaultwarden_encrypted_json import VaultwardenEncryptedJsonWorker
@@ -74,6 +75,7 @@ def create_default_registry() -> WorkerRegistry:
         AdGuardHomeWorker,
         PlexWorker,
         OpenProjectWorker,
+        QBittorrentWorker,
     ):
         registry.register(worker.worker_type, worker)
     return registry
