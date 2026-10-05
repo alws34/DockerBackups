@@ -151,6 +151,7 @@ without a restart.
 | `nginx_proxy_manager`         | Nginx Proxy Manager  | REST API (token login) + tar archive |
 | `adguardhome`                 | AdGuard Home         | REST API (basic auth) + tar archive |
 | `plex`                        | Plex                 | REST API (X-Plex-Token) + tar archive |
+| `jellyfin`                    | Jellyfin             | REST API (API key) + tar archive |
 
 See [`docs/services/`](docs/services/) for what each worker backs up and how
 to configure its credentials.

@@ -47,6 +47,7 @@ def create_default_registry() -> WorkerRegistry:
     from app.workers.bar_assistant import BarAssistantWorker
     from app.workers.homeassistant import HomeAssistantWorker
     from app.workers.immich import ImmichWorker
+    from app.workers.jellyfin import JellyfinWorker
     from app.workers.karakeep import KarakeepWorker
     from app.workers.kitchenowl import KitchenOwlWorker
     from app.workers.linkwarden import LinkwardenWorker
@@ -80,6 +81,7 @@ def create_default_registry() -> WorkerRegistry:
         QBittorrentWorker,
         HomeAssistantWorker,
         OpenWebUIWorker,
+        JellyfinWorker,
     ):
         registry.register(worker.worker_type, worker)
     return registry
