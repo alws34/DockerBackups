@@ -37,7 +37,7 @@ def create_app(
     # wrap the login check, so they run before it and their headers reach 401s too.
     auth_routes.install_auth_guard(app, auth)
     allowed_hosts = os.environ.get("ALLOWED_HOSTS") or env_manager.read().get("ALLOWED_HOSTS", "")
-    install_security_guards(app, parse_allowed_hosts(allowed_hosts))
+    install_security_guards(app, parse_allowed_hosts(allowed_hosts), lambda: auth.mode == "off")
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 

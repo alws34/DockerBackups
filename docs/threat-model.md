@@ -72,8 +72,11 @@ admin panel (OWASP ASVS Level 2 controls):
   idle, 30 days absolute. Changing the password signs out every session.
   Restarting the app signs everyone out.
 - **Brute force:** 5 wrong passwords lock that client out for 15 minutes.
-- **DNS rebinding:** only Host headers that are IP addresses, `localhost`, or
-  names in `ALLOWED_HOSTS` are served (`app/api/security.py`).
+- **DNS rebinding:** with sign-in on, a rebinding page gets nothing: the browser
+  never sends the session cookie to the attacker's hostname, so the API answers 401.
+  Any hostname (e.g. one added in a reverse proxy) works without configuration. With
+  sign-in off, only Host headers that are IP addresses, `localhost`, or names in
+  `ALLOWED_HOSTS` are served (`app/api/security.py`).
 - **CSRF:** state-changing requests that the browser marks as cross-site
   (`Sec-Fetch-Site`, falling back to `Origin`) are rejected.
 - **XSS:** everything the API returns is escaped before it reaches the page;
