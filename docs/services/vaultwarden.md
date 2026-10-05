@@ -33,7 +33,7 @@ CLI exactly as a user would: log in, unlock, sync, export.
 
 - The vault is always locked and logged out again after the run, even on failure.
 - Nothing from this step is ever written to logs — commands containing secrets
-  are redacted before logging (see `security.md`).
+  are redacted before logging (see [`threat-model.md`](../threat-model.md)).
 
 ## Restoring
 

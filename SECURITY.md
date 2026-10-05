@@ -1,119 +1,51 @@
-# Security
+# Security Policy
 
-## Threat Model
+## Supported versions
 
-This agent runs on a private homelab network with access to service APIs and
-credentials. The primary threats are:
+Only the **latest release** (and `main`) receives security fixes. Homelab Takeout
+is built from source, so upgrading is `git pull` (or checking out the new tag)
+followed by `docker compose up -d --build`.
 
-1. **Secret leakage** — credentials escaping the container into logs, git, or disk.
-2. **Backup file theft** — backup archives being read by unintended processes.
-3. **Unauthorized GUI access** — the web UI has no built-in auth.
-4. **Dependency compromise** — a supply-chain attack via a Python package.
+## Reporting a vulnerability
 
-## Secret Handling
+Please **do not open a public issue** for security problems.
 
-### Where secrets live
+Report privately through GitHub's private vulnerability reporting:
+go to the repository's **Security** tab and click **Report a vulnerability**
+(<https://github.com/alws34/homelab-takeout/security/advisories/new>).
 
-| Location                          | What                         | Git tracked? |
-|-----------------------------------|------------------------------|-------------|
-| `.env`                            | All API keys and passwords   | No          |
-| `config/google-credentials.json`  | Google OAuth2 client secret  | No          |
-| `config/google-tokens.json`       | Google OAuth2 access tokens  | No          |
-| `config/services.json`            | Env var *names* (no values)  | Yes         |
+Include what you can: affected version or commit, a description of the issue and
+its impact, and steps or a proof of concept to reproduce it.
 
-### How secrets are protected in code
+## What to expect
 
-- **Never logged.** `worker.run_command()` accepts a `redacted_command` parameter.
-  Any command that contains a secret (e.g. `bw unlock --password ...`) must pass
-  a sanitized form for logging. The raw command is never written to any log.
+- **Acknowledgement within 7 days.**
+- An initial assessment (accepted or declined, with reasoning) within 14 days.
+- For accepted reports, a fix in a new release as soon as practical, normally
+  within 90 days. Coordinated disclosure: the advisory is published when the fix
+  is released, or at 90 days, whichever comes first, unless we agree otherwise.
+- Credit in the advisory if you want it.
 
-- **Never in config files.** `services.json` stores the *name* of the env var
-  (e.g. `"master_password_env": "BW_PASSWORD"`), not the value. Workers resolve
-  the actual value at runtime via `require_env_by_option()`.
+This is a one-maintainer project, so timelines are best effort, but reports are
+taken seriously.
 
-- **File permissions enforced by the app.** Every write to `.env` (via the GUI)
-  calls `chmod 600` on the file. Backup output files are written with `chmod 600`.
-  The app does not rely on umask alone.
+## Scope
 
-- **Secrets masked in the GUI.** The `/api/env-vars/{type}` endpoint masks all
-  `EnvVarSpec` entries where `secret=True` — values are returned as `"***"`.
-  The frontend never receives the plaintext of a secret field after it is saved.
+In scope:
 
-## File and Process Isolation
+- The application code in this repository (`app/`, the web GUI and its API)
+- The `Dockerfile`, `docker-compose.yml`, `entrypoint.sh` and other install or
+  build scripts in this repository
+- The release process (signed source tarballs, provenance)
 
-- **No Docker socket mounted.** The container cannot inspect or control other
-  containers. Workers communicate with services over the network only.
+Out of scope:
 
-- **No `root` writes to the host.** All persistent data (`backups/`, `state/`,
-  `logs/`) is in explicitly mounted volumes. The container user can only write
-  to those bind-mounted directories.
+- The third-party apps Homelab Takeout talks to (Vaultwarden, Immich, n8n, ...):
+  report those to their own projects
+- Running the web GUI exposed to an untrusted network without an auth proxy; it
+  has no built-in authentication by design (see [`docs/threat-model.md`](docs/threat-model.md))
 
-- **Subprocess argument lists, not shell strings.** All `subprocess.run()` calls
-  use a `list[str]` command, never `shell=True`. This eliminates shell injection
-  regardless of the content of env vars or config values.
+## Verifying releases
 
-## Web GUI Security
-
-The GUI has **no built-in authentication**. Treat it as an internal admin panel.
-
-**Required mitigations before any network exposure:**
-
-Option A — Reverse proxy with auth (recommended):
-```nginx
-location / {
-    auth_basic "Homelab Takeout";
-    auth_basic_user_file /etc/nginx/.htpasswd;
-    proxy_pass http://127.0.0.1:8080;
-}
-```
-
-Option B — Traefik ForwardAuth (Authelia / Authentik):
-```yaml
-labels:
-  - "traefik.http.routers.backup.middlewares=authelia@docker"
-```
-
-Option C — VPN-only access (Tailscale / WireGuard).
-
-Without one of the above, anyone on the local network can read backup status,
-trigger runs, and update credentials via the GUI.
-
-## Backup File Security
-
-- Vaultwarden exports are **encrypted** with `VAULTWARDEN_EXPORT_PASSWORD` before
-  writing to disk. Even if the backup file is exfiltrated, it requires the export
-  password to decrypt. This password must differ from the master password.
-
-- All other backups (wikijs, snipeit, etc.) are unencrypted archives. Protect the
-  `backups/` volume directory with appropriate host-level permissions.
-
-- Do not store backups on the same host as the services they back up. Use Google
-  Drive upload or copy `backups/` to a separate machine.
-
-## Dependency Security
-
-- All Python dependencies are pinned to exact versions in `requirements.txt`
-  (generated by `pip-compile`). Upgrades require an explicit `pip-compile` run
-  and a new commit — there are no silent floating-version upgrades.
-
-- `ruff` with the `S` (bandit) rule set is enabled. CI should run `ruff check`
-  on every pull request to catch common security anti-patterns.
-
-- Audit dependencies periodically:
-  ```bash
-  pip install pip-audit
-  pip-audit -r requirements.txt
-  ```
-
-## What This Agent Does NOT Do
-
-- Does not exfiltrate telemetry, usage data, or logs to any external service.
-- Does not open outbound connections except to the configured service URLs and
-  Google Drive (if enabled).
-- Does not listen on any port other than `$WEB_PORT` (default 8080).
-- Does not run with elevated privileges inside the container.
-
-## Reporting Security Issues
-
-This is a personal homelab tool published under MIT. If you find a vulnerability,
-open an issue or send a private message to the repository maintainer.
+Release tarballs are signed with Sigstore and carry SLSA build provenance. See
+[`docs/VERIFYING_RELEASES.md`](docs/VERIFYING_RELEASES.md).

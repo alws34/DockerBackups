@@ -97,6 +97,23 @@ There's no prebuilt image on purpose: you build from the code you just cloned.
 To update, `git pull` and run the same `docker compose up -d --build`.
 The timezone defaults to UTC; set `TZ=Europe/Berlin` (or similar) in `.env`.
 
+The container runs as an unprivileged user, uid:gid `1000:1000` by default. If
+your files belong to a different user (check with `id -u` / `id -g`), set
+`PUID` and `PGID` in `.env`. Tagged releases are signed; see
+[Verifying releases](docs/VERIFYING_RELEASES.md) to check one before building it.
+
+### Upgrading from a root container
+
+Versions before the non-root change ran as root, so `backups/`, `logs/`, `state/`,
+`config/` and `.env` may now contain root-owned files. The container checks this
+at startup and, if it can't write somewhere, exits with a message naming the path.
+Fix it once from the compose folder:
+
+```bash
+sudo chown -R 1000:1000 backups logs state config .env   # or your PUID:PGID
+docker compose up -d --build
+```
+
 ## How It Works
 
 ```mermaid
@@ -150,10 +167,14 @@ guides show how to use it. A restore helper for the 📄 services is on the road
 - Backup files are written `chmod 600`; the Vaultwarden export is encrypted
 - No Docker socket, no DB access, no telemetry, and no outbound calls except
   to your own apps and (optionally) Google Drive
+- The container runs non-root with all capabilities dropped, `no-new-privileges`
+  and a read-only root filesystem; dependencies are hash-pinned
+- Releases are signed with Sigstore and ship SLSA provenance and an SBOM
+  ([how to verify](docs/VERIFYING_RELEASES.md))
 - **The web GUI has no built-in authentication.** Keep it on your LAN, or put it
   behind an auth proxy (Authelia, Authentik, Traefik forward-auth, nginx basic auth)
 
-Full threat model: [`security.md`](security.md).
+Full threat model: [`docs/threat-model.md`](docs/threat-model.md). To report a vulnerability, see [`SECURITY.md`](SECURITY.md).
 
 ## Adding a Service
 
@@ -169,18 +190,21 @@ is a complete 48-line example.
 
 ## Contributing
 
-Issues and PRs are welcome, especially new workers and restore helpers.
-Every PR runs `ruff` and the test suite in CI:
+Issues and PRs are welcome, especially new workers and restore helpers. See
+[`CONTRIBUTING.md`](CONTRIBUTING.md). Every PR runs `ruff`, the test suite, a
+Docker build and smoke test, and CodeQL in CI:
 
 ```bash
-pip install -r requirements.txt pytest ruff
+pip install --require-hashes -r requirements.txt -r requirements-dev.txt
 ruff check app tests && ruff format --check app tests
 PYTHONPATH=. pytest tests -q
 ```
 
-Dependencies are pinned with [pip-tools](https://pip-tools.readthedocs.io/):
-edit `requirements.in`, then run `pip-compile requirements.in -o requirements.txt`.
-The Bitwarden CLI version is pinned via `ARG BW_CLI_VERSION` in the `Dockerfile`.
+Dependencies are locked with hashes by [pip-tools](https://pip-tools.readthedocs.io/):
+edit `requirements.in` (or `requirements-dev.in`), then run
+`pip-compile --generate-hashes --strip-extras requirements.in -o requirements.txt`
+(and the same for `requirements-dev`). The Bitwarden CLI version is pinned in
+`bw/package.json`, with its dependencies locked in `bw/package-lock.json`.
 
 ### How this was built
 
