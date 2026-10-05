@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import html
 import json
 import os
 import secrets
@@ -180,7 +181,7 @@ def create_router(env_manager: EnvManager) -> APIRouter:
             creds = flow.credentials
         except Exception as e:  # noqa: BLE001 - report any token-exchange error to the user
             return HTMLResponse(
-                f"<html><body><h2>Authorization failed: {e}</h2></body></html>",
+                f"<html><body><h2>Authorization failed: {html.escape(str(e))}</h2></body></html>",
                 status_code=500,
             )
 
