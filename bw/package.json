@@ -3,6 +3,10 @@
   "private": true,
   "description": "Pins the Bitwarden CLI used by the Vaultwarden worker. Transitive deps are locked in package-lock.json.",
   "dependencies": {
-    "@bitwarden/cli": "2026.5.0"
+    "@bitwarden/cli": "2026.9.1"
+  },
+  "overrides": {
+    "multer": "^2.4.0",
+    "tmp": "^0.2.7"
   }
 }
