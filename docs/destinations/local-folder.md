@@ -25,6 +25,17 @@ yours to configure, using your own credentials.
 
 3. Click **Test connection**, then switch on **Upload here**.
 
+**Without Docker (systemd install):** the service is sandboxed and can only
+write to its own folders, so allow the destination folder once:
+
+```bash
+sudo systemctl edit homelab-takeout
+# add, then save:
+#   [Service]
+#   ReadWritePaths=/mnt/nas/homelab-takeout
+sudo systemctl restart homelab-takeout
+```
+
 ## Example: sync the folder with rclone
 
 ```bash

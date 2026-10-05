@@ -21,6 +21,9 @@ COPY requirements.txt /srv/requirements.txt
 RUN pip install --no-cache-dir --require-hashes -r /srv/requirements.txt
 
 COPY app/ /srv/app/
+# COPY keeps the build machine's permissions; a strict umask (or a synced folder) would
+# leave the code unreadable for the unprivileged user below.
+RUN chmod -R a+rX,go-w /srv/app
 COPY --chmod=755 entrypoint.sh /entrypoint.sh
 
 # Unprivileged runtime user. The code stays root-owned, so the app cannot modify itself.
