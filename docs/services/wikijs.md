@@ -21,3 +21,10 @@ written out as individual Markdown/HTML files and bundled into a `tar.gz`.
 |--------------------|----------|-------------------------------------------------|
 | `WIKIJS_URL`       | Yes      | Base URL, e.g. `https://wiki.your-domain.com`  |
 | `WIKIJS_API_TOKEN` | Yes      | Admin API token from Administration → API Access |
+
+## Restoring
+
+**Partial, via Wiki.js's own disk import.** Extract the archive, point a
+**Local File System** storage target (Administration → Storage) at the extracted
+folder, then run **Import Everything**. Page content and paths come back. The
+files carry no Wiki.js metadata header, so check titles and tags after the import.

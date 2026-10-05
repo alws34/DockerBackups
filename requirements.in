@@ -1,3 +1,5 @@
+# Runtime dependencies. Lock with:
+#   pip-compile --generate-hashes requirements.in -o requirements.txt
 fastapi>=0.111.0
 uvicorn[standard]>=0.30.0
 requests>=2.32.0
@@ -6,5 +8,6 @@ google-api-python-client>=2.130.0
 google-auth>=2.29.0
 google-auth-httplib2>=0.2.0
 google-auth-oauthlib>=1.2.0
-pytest>=8.0.0
-pytest-asyncio>=0.23.0
+msal>=1.31.0
+paramiko>=3.5.0
+smbprotocol>=1.15.0

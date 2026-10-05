@@ -51,9 +51,7 @@ class WikiJsWorker(BackupWorker):
 
     worker_type: ClassVar[str] = "wikijs"
     display_name: ClassVar[str] = "Wiki.js"
-    description: ClassVar[str] = (
-        "Export all pages via GraphQL API and archive as compressed tar."
-    )
+    description: ClassVar[str] = "Export all pages via GraphQL API and archive as compressed tar."
     env_var_specs: ClassVar[list[EnvVarSpec]] = [
         EnvVarSpec(
             key="WIKIJS_URL",

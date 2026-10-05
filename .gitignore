@@ -29,6 +29,7 @@ env/
 .ruff_cache/
 .mypy_cache/
 .coverage
+coverage.xml
 htmlcov/
 
 # OS artifacts
@@ -37,6 +38,9 @@ Thumbs.db
 
 # Node (only present inside Docker build; not committed)
 node_modules/
+
+# Claude Code agent worktrees
+.claude/worktrees/
 
 # Internal planning docs
 docs/superpowers/

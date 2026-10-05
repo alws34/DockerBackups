@@ -19,7 +19,7 @@ def config_file(tmp_path: Path) -> Path:
     """Return a temporary services.json with one enabled and one disabled service."""
     config = {
         "schedule": {"daily_at": "03:30", "run_on_start": False},
-        "retention": {"keep_days": 7, "drive_keep_count": 5},
+        "retention": {"keep_days": 7, "remote_keep_count": 5},
         "destinations": {},
         "services": [
             {"name": "svc1", "type": "dummy", "enabled": True, "options": {}},
@@ -60,24 +60,24 @@ def test_load_config(config_file: Path, registry: MagicMock) -> None:
     scheduler = BackupScheduler(str(config_file), registry)
     scheduler.load_config()
     assert scheduler.get_config()["retention"]["keep_days"] == 7
-    assert scheduler.get_config()["retention"]["drive_keep_count"] == 5
+    assert scheduler.get_config()["retention"]["remote_keep_count"] == 5
 
 
-def test_get_settings_includes_drive_keep_count(config_file: Path, registry: MagicMock) -> None:
-    """get_settings should expose drive_keep_count from config."""
+def test_get_settings_includes_remote_keep_count(config_file: Path, registry: MagicMock) -> None:
+    """get_settings should expose remote_keep_count from config."""
     scheduler = BackupScheduler(str(config_file), registry)
     scheduler.load_config()
     settings = scheduler.get_settings()
-    assert settings["drive_keep_count"] == 5
+    assert settings["remote_keep_count"] == 5
 
 
-def test_update_settings_persists_drive_keep_count(config_file: Path, registry: MagicMock) -> None:
-    """update_settings should persist drive_keep_count to disk."""
+def test_update_settings_persists_remote_keep_count(config_file: Path, registry: MagicMock) -> None:
+    """update_settings should persist remote_keep_count to disk."""
     scheduler = BackupScheduler(str(config_file), registry)
     scheduler.load_config()
     scheduler.update_settings("04:00", 0, False, 14, 7)
     scheduler.load_config()
-    assert scheduler.get_settings()["drive_keep_count"] == 7
+    assert scheduler.get_settings()["remote_keep_count"] == 7
 
 
 @pytest.mark.asyncio
@@ -132,9 +132,7 @@ async def test_state_persisted_after_success(
     monkeypatch.setenv("STATE_ROOT", str(state_dir))
     scheduler = BackupScheduler(str(config_file), registry)
     scheduler.load_config()
-    await scheduler.run_service(
-        {"name": "svc1", "type": "dummy", "enabled": True, "options": {}}
-    )
+    await scheduler.run_service({"name": "svc1", "type": "dummy", "enabled": True, "options": {}})
     state_file = state_dir / "svc1" / "last_result.json"
     assert state_file.exists()
     data = json.loads(state_file.read_text())

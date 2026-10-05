@@ -21,9 +21,7 @@ from app.core.context import BackupContext, BackupError, BackupResult
 logger = logging.getLogger(__name__)
 
 
-def fetch_json(
-    session: requests.Session, method: str, url: str, **kwargs: object
-) -> dict | list:
+def fetch_json(session: requests.Session, method: str, url: str, **kwargs: object) -> dict | list:
     """Call an API endpoint and return its JSON body, raising ``BackupError`` on any failure."""
     try:
         resp = session.request(method, url, timeout=120, **kwargs)
@@ -46,6 +44,8 @@ class EnvVarSpec:
     required: bool
     # Key in service_config["options"] that points to this env var's name.
     option_key: str = ""
+    # Shown under an "Advanced" fold in the GUI.
+    advanced: bool = False
 
     def describe(self, raw_value: str) -> dict[str, object]:
         """Return a UI-facing dict, masking the value when the var is secret."""
@@ -57,6 +57,7 @@ class EnvVarSpec:
             "required": self.required,
             "configured": bool(raw_value),
             "value": "***" if self.secret else raw_value,
+            "advanced": self.advanced,
         }
 
 
@@ -91,9 +92,7 @@ class BackupWorker(ABC):
         """Return the named option's value, raising if it is missing or empty."""
         value = self.options.get(key)
         if not value:
-            raise BackupError(
-                f"Missing required option '{key}' for service '{self.service_name}'"
-            )
+            raise BackupError(f"Missing required option '{key}' for service '{self.service_name}'")
         return value
 
     def require_env_by_option(self, context: BackupContext, option_key: str) -> str:
@@ -155,9 +154,7 @@ class BackupWorker(ABC):
             raise BackupError(f"Required binary '{binary_name}' not found in PATH")
         return path
 
-    def cleanup_old_files(
-        self, directory: Path, pattern: str, retention_days: int
-    ) -> None:
+    def cleanup_old_files(self, directory: Path, pattern: str, retention_days: int) -> None:
         """Delete files matching ``pattern`` older than ``retention_days``."""
         cutoff = datetime.now() - timedelta(days=retention_days)
         for f in directory.glob(pattern):

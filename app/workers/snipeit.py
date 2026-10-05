@@ -94,11 +94,7 @@ class SnipeItWorker(BackupWorker):
                 resp.raise_for_status()
                 data = resp.json()
                 if offset == 0:
-                    keys = (
-                        list(data.keys())
-                        if isinstance(data, dict)
-                        else type(data).__name__
-                    )
+                    keys = list(data.keys()) if isinstance(data, dict) else type(data).__name__
                     logger.info(f"snipeit: {endpoint} response keys: {keys}")
                 # Snipe-IT uses "rows" at the top level.
                 if isinstance(data, list):
@@ -154,8 +150,7 @@ class SnipeItWorker(BackupWorker):
             worker_type=self.worker_type,
             success=True,
             message=(
-                f"{total_records} records exported: {archive.name} "
-                f"({archive.stat().st_size} bytes)"
+                f"{total_records} records exported: {archive.name} ({archive.stat().st_size} bytes)"
             ),
             output_files=[archive],
             started_at=started_at,
