@@ -45,3 +45,4 @@ node_modules/
 # Internal planning docs
 docs/superpowers/
 init_instructions.md
+config/services.json

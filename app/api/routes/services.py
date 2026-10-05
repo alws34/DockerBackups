@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
+from app.api.icons import icon_url
 from app.core.env_manager import EnvManager
 from app.core.registry import WorkerRegistry
 from app.core.scheduler import BackupScheduler
@@ -50,6 +51,7 @@ def create_router(
                     "enabled": svc.get("enabled", False),
                     "display_name": (worker_class.display_name if worker_class else svc["type"]),
                     "description": worker_class.description if worker_class else "",
+                    "icon": icon_url(svc["type"]),
                     "is_running": scheduler.is_running(svc["name"]),
                     "last_result": scheduler.get_state(svc["name"]),
                     "env_vars": env_var_info,
@@ -66,6 +68,7 @@ def create_router(
                 "type": worker_type,
                 "display_name": worker_class.display_name,
                 "description": worker_class.description,
+                "icon": icon_url(worker_type),
                 "settings": [spec.label for spec in worker_class.env_var_specs],
                 "added": worker_type in added,
             }

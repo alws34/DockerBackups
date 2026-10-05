@@ -15,6 +15,7 @@ let authState = null;
 let openTile = null;      // "s:<service name>" or "d:<destination type>"
 let loginPoll = null;
 let refreshTimer = null;
+let schedule = null;      // /api/settings, for the status bar
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -75,6 +76,21 @@ function size(bytes) {
   return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
 }
 
+function ago(iso) {
+  const minutes = Math.round((Date.now() - new Date(iso)) / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 48 * 60) return `${Math.round(minutes / 60)} h ago`;
+  return `${Math.round(minutes / 1440)} days ago`;
+}
+
+// Logo, or the first letter when an app ships without one.
+const logo = (item, px = 28) => item.icon
+  ? `<img class="logo" src="${esc(item.icon)}" alt="" width="${px}" height="${px}" />`
+  : `<span class="logo letter" aria-hidden="true">${esc(item.display_name.charAt(0))}</span>`;
+
+const statusTag = ([cls, word]) => `<span class="status ${cls}">${esc(word)}</span>`;
+
 const destName = type => destinations.find(d => d.type === type)?.display_name || type;
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -111,10 +127,27 @@ function destinationStatus(dest) {
 
 // ── rendering ──────────────────────────────────────────────────────────────
 
-function tileHead(name, [cls, word], open) {
-  return `<button class="tile-head" data-act="open" aria-expanded="${open}">
-    <span class="tile-name">${esc(name)}</span>
-    <span class="head-right"><span class="badge ${cls}">${esc(word)}</span><span class="chev" aria-hidden="true">▾</span></span>
+// The last 14 runs, oldest first: delivered, backed up but not delivered, failed.
+function historyStrip(svc) {
+  const runs = (svc.last_result?.history || []).slice(-14);
+  const cells = Array(14 - runs.length).fill(`<i class="none"></i>`).concat(runs.map(r => {
+    const [cls, word] = r.delivered ? ["y", "backed up and delivered"]
+      : r.success ? ["p", "backed up, not delivered everywhere"] : ["n", "failed"];
+    return `<i class="${cls}" title="${esc(when(r.finished_at))}: ${word}"></i>`;
+  }));
+  return `<span class="history" aria-label="Last ${runs.length} runs">${cells.join("")}</span>`;
+}
+
+function serviceTile(svc) {
+  const lr = svc.last_result;
+  const meta = !svc.enabled ? "Not backed up on schedule"
+    : missingSettings(svc).length ? `${plural(missingSettings(svc).length, "setting")} missing`
+      : lr ? [ago(lr.finished_at), lr.size_bytes ? size(lr.size_bytes) : ""].filter(Boolean).join(" · ")
+        : "Not backed up yet";
+  return `<button class="tile ${svc.enabled ? "" : "is-off"}" data-tile="${esc(`s:${svc.name}`)}" data-act="open" aria-haspopup="dialog">
+    <span class="tile-top">${logo(svc)}<span class="tile-name">${esc(svc.display_name)}</span>${statusTag(serviceStatus(svc))}</span>
+    ${historyStrip(svc)}
+    <span class="tile-meta">${esc(meta)}</span>
   </button>`;
 }
 
@@ -163,7 +196,7 @@ function serviceBody(svc) {
     <div class="tile-foot">
       <label class="switch"><input type="checkbox" data-act="svc-toggle" ${svc.enabled ? "checked" : ""} /> Back up on schedule</label>
       <div class="spacer"></div>
-      <button class="btn quiet" data-act="svc-remove">Remove from dashboard</button>
+      <button class="btn danger-outline" data-act="svc-remove">Remove service</button>
       <button class="btn" data-act="svc-save">Save</button>
       <button class="btn primary" data-act="svc-run" ${!svc.enabled || svc.is_running || miss.length ? "disabled" : ""}>Back up now</button>
     </div>
@@ -241,36 +274,31 @@ function destinationBody(dest) {
   </div>`;
 }
 
-function renderSummary() {
-  const active = services.filter(s => s.enabled && !missingSettings(s).length);
-  const good = active.filter(s => serviceStatus(s)[0] === "ok").length;
-  const shipping = destinations.some(d => d.enabled);
-  const done = shipping ? "backed up and delivered" : "backed up";
-  $("#sum-title").textContent =
-    !services.length ? "Add the apps you run to start backing them up."
-      : !active.length ? "Nothing is ready to back up yet."
-        : good === active.length ? `All ${plural(active.length, "service")} ${done}.`
-          : `${good} of ${plural(active.length, "service")} ${done}.`;
-
-  const notes = [];
-  const link = (tile, label) => `<button class="link" data-goto="${esc(tile)}">${label}</button>`;
-  for (const s of services) {
-    const [cls] = serviceStatus(s);
-    if (cls === "fail") notes.push(`${esc(s.display_name)}: ${esc(serviceProblem(s).slice(0, 140))} ${link(`s:${s.name}`, "Open")}`);
-    if (cls === "setup") notes.push(`${esc(s.display_name)} needs ${plural(missingSettings(s).length, "setting")} before its first backup. ${link(`s:${s.name}`, "Set up")}`);
-  }
-  for (const d of destinations) {
-    if (destinationStatus(d)[0] === "setup") notes.push(`${esc(d.display_name)} is switched on but not connected. ${link(`d:${d.type}`, "Connect")}`);
-  }
-  const off = services.filter(s => !s.enabled).length;
-  if (off) notes.push(`${off} disabled.`);
-  if (services.length && !shipping) notes.push(`Backups stay on this server only. Switch on a destination below to keep a copy elsewhere.`);
-  $("#sum-list").innerHTML = notes.map(n => `<li>${n}</li>`).join("");
+function nextBackup() {
+  if (!schedule) return "";
+  if (schedule.interval_hours > 0) return `every ${plural(schedule.interval_hours, "hour")}`;
+  const [h, m] = schedule.daily_at.split(":").map(Number);
+  const next = new Date();
+  next.setHours(h, m, 0, 0);
+  const day = next > new Date() ? "today" : "tomorrow";
+  return `${day} ${schedule.daily_at}`;
 }
 
-// Re-rendering replaces the open tile's inputs; carry over what the user was typing.
+function renderStatusBar() {
+  const attention = services.filter(s => ["fail", "setup"].includes(serviceStatus(s)[0])).length +
+    destinations.filter(d => ["fail", "setup"].includes(destinationStatus(d)[0])).length;
+  const parts = [
+    plural(services.length, "app"),
+    attention ? `<span class="attn">${attention} need${attention === 1 ? "s" : ""} attention</span>` : "all good",
+  ];
+  if (!destinations.some(d => d.enabled)) parts.push("backups stay on this server only");
+  if (schedule) parts.push(`next backup ${esc(nextBackup())}`);
+  $("#statusbar").innerHTML = services.length ? parts.join(" · ") : "";
+}
+
+// Re-rendering replaces the open details' inputs; carry over what the user was typing.
 function keepTyping(render) {
-  const typed = [...document.querySelectorAll(".tile.open input[id]:not([type=checkbox]), .tile.open textarea[id]")]
+  const typed = [...document.querySelectorAll("#detail-body input[id]:not([type=checkbox]), #detail-body textarea[id]")]
     .map(el => [el.id, el.value]);
   const focused = document.activeElement?.id;
   render();
@@ -281,27 +309,48 @@ function keepTyping(render) {
   if (focused) document.getElementById(focused)?.focus();
 }
 
-function render() {
-  keepTyping(() => {
-    $("#svc-grid").innerHTML = services.map(svc => {
-      const key = `s:${svc.name}`, open = openTile === key;
-      return `<div class="tile ${open ? "open" : ""} ${svc.enabled ? "" : "is-off"}" data-tile="${esc(key)}">
-        ${tileHead(svc.display_name, serviceStatus(svc), open)}
-        ${open ? serviceBody(svc) : ""}
-      </div>`;
-    }).join("") + `<button class="add-tile" data-act="catalog">+ Add a service</button>`;
+function renderDetail() {
+  const item = openTile && tileItem({ dataset: { tile: openTile } });
+  const dlg = $("#detail");
+  if (!item) {
+    openTile = null;
+    if (dlg.open) dlg.close();
+    return;
+  }
+  const isService = openTile.startsWith("s:");
+  const [cls, word] = isService ? serviceStatus(item) : destinationStatus(item);
+  $("#detail-name").textContent = item.display_name;
+  $("#detail-icon").src = item.icon || "data:,";
+  $("#detail-icon").hidden = !item.icon;
+  $("#detail-badge").className = `status ${cls}`;
+  $("#detail-badge").textContent = word;
+  const body = $("#detail-body");
+  body.dataset.tile = openTile;
+  keepTyping(() => { body.innerHTML = isService ? serviceBody(item) : destinationBody(item); });
+  if (!dlg.open) dlg.showModal();
+}
 
-    $("#dst-grid").innerHTML = destinations.map(dest => {
-      const key = `d:${dest.type}`, open = openTile === key;
-      return `<div class="tile ${open ? "open" : ""} ${dest.enabled ? "" : "is-off"}" data-tile="${esc(key)}">
-        ${tileHead(dest.display_name, destinationStatus(dest), open)}
-        ${open ? destinationBody(dest) : ""}
-      </div>`;
-    }).join("");
-  });
-  renderSummary();
-  $("#svc-count").textContent = services.length ? plural(services.length, "app") : "";
-  $("#dst-count").textContent = `${destinations.filter(d => d.enabled).length} switched on`;
+function render() {
+  $("#svc-grid").innerHTML = services.length ? services.map(serviceTile).join("") : `<div class="empty">
+      <p><strong>No apps yet.</strong> Pick the apps you run and they get backed up every night through their own APIs.</p>
+      <button class="btn primary" data-act="catalog">Add a service</button>
+    </div>`;
+  const shown = destinations.filter(d => d.enabled);
+  $("#dst-row").innerHTML = shown.map(dest =>
+    `<button class="chip" data-tile="${esc(`d:${dest.type}`)}" data-act="open" aria-haspopup="dialog">
+      ${logo(dest, 20)}<span>${esc(dest.display_name)}</span>${statusTag(destinationStatus(dest))}
+    </button>`).join("") +
+    `<button class="chip add" data-act="dest-picker">${shown.length ? "Add a destination" : "Add a destination to keep a copy off this server"}</button>`;
+  if (openTile) renderDetail();
+  renderStatusBar();
+}
+
+function openDestinationPicker() {
+  $("#dest-list").innerHTML = destinations.map(d => `<button class="cat-item pick" data-goto="${esc(`d:${d.type}`)}">
+      <span class="row">${logo(d)}<span class="tile-name">${esc(d.display_name)}</span>${d.enabled ? statusTag(destinationStatus(d)) : ""}</span>
+      <p>${esc(d.description)}</p>
+    </button>`).join("");
+  $("#dest-picker").showModal();
 }
 
 async function refresh() {
@@ -315,8 +364,7 @@ async function refresh() {
 
 function openAndShow(key) {
   openTile = key;
-  render();
-  document.querySelector(`[data-tile="${CSS.escape(key)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  renderDetail();
 }
 
 // ── services ───────────────────────────────────────────────────────────────
@@ -355,11 +403,12 @@ async function removeService(svc) {
     title: `Remove ${svc.display_name} from the dashboard?`,
     text: "Its backups stop. Backups already made and its saved settings are kept, so adding it back picks up where you left off.",
     ok: "Remove",
-  })) return;
+  })) return false;
   await api(`/api/services/${svc.name}`, { method: "DELETE" });
-  openTile = null;
+  if (openTile === `s:${svc.name}`) $("#detail").close();
   toast(`${svc.display_name} removed. Add it back any time.`);
   await refresh();
+  return true;
 }
 
 async function runService(svc) {
@@ -379,8 +428,8 @@ function renderCatalog() {
   const q = $("#cat-q").value.trim().toLowerCase();
   const items = (openCatalog.items || []).filter(c => !q || `${c.display_name} ${c.description}`.toLowerCase().includes(q));
   $("#cat-list").innerHTML = items.map(c => `<div class="cat-item">
-      <div class="row"><span class="tile-name">${esc(c.display_name)}</span>
-        ${c.added ? `<span class="badge off">Added</span>` : `<button class="btn" data-add="${esc(c.type)}">Add</button>`}</div>
+      <div class="row">${logo(c)}<span class="tile-name">${esc(c.display_name)}</span>
+        ${c.added ? `<button class="btn danger-outline" data-remove="${esc(c.type)}">Remove</button>` : `<button class="btn" data-add="${esc(c.type)}">Add</button>`}</div>
       <p>${esc(c.description)}</p>
       ${c.settings.length ? `<div class="needs">Needs: ${c.settings.map(esc).join(", ")}</div>` : ""}
     </div>`).join("") || `<p class="muted">No app matches “${esc(q)}”.</p>`;
@@ -545,9 +594,8 @@ async function authorizeOwnGoogleClient() {
 // ── settings ───────────────────────────────────────────────────────────────
 
 function showSchedule(s) {
-  $("#next-run").innerHTML = s.interval_hours > 0
-    ? `Backs up every <b>${esc(plural(s.interval_hours, "hour"))}</b>`
-    : `Backs up daily at <b>${esc(s.daily_at)}</b>`;
+  schedule = s;
+  renderStatusBar();
 }
 
 async function openSettings() {
@@ -722,19 +770,28 @@ function tileItem(tile) {
 const guarded = fn => (...args) => Promise.resolve(fn(...args)).catch(e => toast(e.message, true));
 
 document.addEventListener("click", guarded(async e => {
-  const el = e.target.closest("[data-act], [data-goto], [data-add], [data-close]");
+  const el = e.target.closest("[data-act], [data-goto], [data-add], [data-remove], [data-close]");
   if (!el) return;
   if (el.dataset.close !== undefined) return el.closest("dialog").close();
-  if (el.dataset.goto) return openAndShow(el.dataset.goto);
+  if (el.dataset.goto) {
+    el.closest("dialog")?.close();
+    return openAndShow(el.dataset.goto);
+  }
   if (el.dataset.add) return addService(el.dataset.add);
+  if (el.dataset.remove) {
+    const svc = services.find(x => x.type === el.dataset.remove);
+    if (svc && await removeService(svc)) {
+      openCatalog.items = await api("/api/catalog");
+      renderCatalog();
+    }
+    return;
+  }
   const act = el.dataset.act;
   if (act === "catalog") return openCatalog();
+  if (act === "dest-picker") return openDestinationPicker();
   if (act === "svc-toggle" || act === "dst-toggle") return;   // handled on change
-  const tile = el.closest(".tile");
-  if (act === "open") {
-    openTile = openTile === tile.dataset.tile ? null : tile.dataset.tile;
-    return render();
-  }
+  const tile = el.closest("[data-tile]");
+  if (act === "open") return openAndShow(tile.dataset.tile);
   const item = tileItem(tile);
   if (item && tileActions[act]) await tileActions[act](item, tile);
 }));
@@ -742,7 +799,7 @@ document.addEventListener("click", guarded(async e => {
 document.addEventListener("change", guarded(async e => {
   const act = e.target.dataset.act;
   if (act !== "svc-toggle" && act !== "dst-toggle") return;
-  const item = tileItem(e.target.closest(".tile"));
+  const item = tileItem(e.target.closest("[data-tile]"));
   if (act === "svc-toggle") await setServiceEnabled(item, e.target.checked);
   else await setDestinationEnabled(item, e.target.checked);
 }));
@@ -763,6 +820,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#change-password").addEventListener("click", guarded(changePassword));
   $("#copy-code").addEventListener("click", copyLoginCode);
   $("#login-modal").addEventListener("close", () => clearInterval(loginPoll));
+  $("#detail").addEventListener("close", () => { openTile = null; });
   $("#cat-q").addEventListener("input", renderCatalog);
   checkAuth();
 });
