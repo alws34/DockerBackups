@@ -1,0 +1,18 @@
+# Tag push -> signed source release. All building and signing happens in the reusable
+# workflow, so the signing identity is build-release.yml (SLSA Build L3 isolation).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    permissions:
+      contents: write # create the GitHub Release
+      id-token: write # keyless Sigstore signing
+      attestations: write # store build provenance
+    uses: ./.github/workflows/build-release.yml

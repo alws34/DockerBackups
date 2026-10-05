@@ -30,3 +30,7 @@ line-ending = "lf"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["app"]
+relative_files = true  # repo-relative paths in coverage.xml, as SonarQube expects

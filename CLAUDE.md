@@ -13,7 +13,10 @@ vanilla JS GUI, Python 3.12 Alpine. Workers produce files; destinations upload t
 - `.env` is `chmod 600` enforced on every write; never relax this.
 - Secrets live ONLY in `.env` or mounted credential files — never in Python source or JSON config.
 - Workers run in `asyncio.to_thread` (blocking); never call blocking I/O directly in `async def`.
-- All tests must pass (44 at last count). Run `pytest tests/ -x -q` before any commit.
+- The container runs as non-root (uid 1000 / `PUID`) with a read-only root filesystem and all
+  capabilities dropped. The app may only write to the bind mounts (`/backups`, `/logs`,
+  `/state`, `/config`, `/app-env/.env`), `/tmp` and `$HOME` (both tmpfs).
+- All tests must pass (54 at last count). Run `PYTHONPATH=. pytest tests/ -x -q` before any commit.
 
 ## Stack
 
@@ -23,7 +26,7 @@ vanilla JS GUI, Python 3.12 Alpine. Workers produce files; destinations upload t
 | API         | FastAPI + uvicorn             |
 | Scheduling  | asyncio (no external queue)  |
 | GUI         | Vanilla JS, no build step    |
-| Deps pinned | `requirements.txt` (pip-tools lock file) |
+| Deps pinned | `requirements.txt` + `requirements-dev.txt` (pip-tools, hashed) |
 | Linting     | ruff (`pyproject.toml`)       |
 
 ## Directory Map
@@ -68,9 +71,23 @@ Never add secrets to `config/services.json` — it is committed to git.
 
 ## Dependency Management
 
-- **Edit** `requirements.in` (human constraints, `>=`).
-- **Regenerate** `requirements.txt` (pinned lock file): `pip-compile requirements.in -o requirements.txt`.
-- Docker uses `requirements.txt` — this guarantees bit-for-bit reproducible installs.
+- **Runtime deps:** edit `requirements.in` (human constraints, `>=`).
+- **Test/lint deps:** edit `requirements-dev.in` (pytest, pytest-asyncio, pytest-cov, ruff).
+  It starts with `-c requirements.txt`, so dev tools never shift runtime pins.
+- **Regenerate both hashed lock files** (runtime first):
+  ```bash
+  pip-compile --generate-hashes --strip-extras requirements.in -o requirements.txt
+  pip-compile --generate-hashes --strip-extras requirements-dev.in -o requirements-dev.txt
+  ```
+  `--strip-extras` is required: pip rejects extras in a constraints file.
+- **Install** always with hashes: `pip install --require-hashes -r requirements.txt -r requirements-dev.txt`.
+- Docker installs `requirements.txt` with `--require-hashes`; every dep must ship a musllinux
+  wheel (no compiler in the image).
+- Bitwarden CLI: version in `bw/package.json`, transitive deps locked in `bw/package-lock.json`
+  (Docker runs `npm ci`). Regenerate the lock inside the pinned base image with
+  `npm install --package-lock-only`.
+- Base image is pinned by digest; workflow actions are pinned by commit SHA. Dependabot
+  updates all of these weekly.
 
 ## Lint / Format
 
