@@ -18,6 +18,14 @@ vanilla JS GUI, Python 3.12 Alpine. Workers produce files; destinations upload t
   `/state`, `/config`, `/app-env/.env`), `/tmp` and `$HOME` (both tmpfs).
 - All tests must pass (79 at last count). Run `PYTHONPATH=. pytest tests/ -x -q` before any commit.
 
+## Branches
+
+- `main` is what users clone and what releases are tagged from. Never commit or push to
+  it directly; it only changes through a pull request from `dev` once `dev` is tested.
+- `dev` is the integration branch. Work happens on a feature branch (`feat/…`, `fix/…`,
+  `ci/…`), which is merged into `dev` and pushed. CI and CodeQL run on `dev`.
+- Outside contributors open PRs against `dev`. Dependabot also targets `dev`.
+
 ## Stack
 
 | Layer       | Tech                         |
