@@ -309,11 +309,8 @@ def create_router(env_manager: EnvManager, scheduler: BackupScheduler) -> APIRou
                 status_code=500,
             )
         return HTMLResponse(
-            "<html><body style='font-family:sans-serif;text-align:center;padding:3rem'>"
-            "<h2>&#10003; Google Drive connected.</h2>"
-            "<p>You can close this tab and return to Homelab Takeout.</p>"
-            "<script>setTimeout(()=>window.close(),2000)</script>"
-            "</body></html>"
+            "<html><body><h2>&#10003; Google Drive connected.</h2>"
+            "<p>You can close this tab and return to Homelab Takeout.</p></body></html>"
         )
 
     return router

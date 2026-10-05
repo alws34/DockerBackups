@@ -17,7 +17,7 @@ under the remote folder you choose.
    ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
    ```
 
-3. Switch on **Upload here**.
+3. Switch on **Upload backups here**.
 
 ## How it stays safe
 

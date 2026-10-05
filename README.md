@@ -48,10 +48,10 @@ a schedule and ships the result somewhere safe.
 ## Features
 
 - 12 services supported out of the box, each a single small Python file
-- Daily at a fixed time, or every *N* hours, plus **Run now** and **Run all**
+- Daily at a fixed time, or every *N* hours, plus **Back up now** for one app or all
 - Local retention (default: 30 days) and per-destination retention (default: last 3)
 - Copies to **Google Drive, OneDrive, SFTP, SMB** or any local folder after every run
-- Per-service status, last result, and logs in the GUI
+- Add only the apps you run; each shows OK, failed or needs setup at a glance
 - Secrets live only in a `chmod 600` `.env` and are redacted from logs
 - Built from source on your own machine, so you know exactly what's running
 
@@ -107,8 +107,10 @@ mkdir -p backups logs state && chmod 700 backups logs state
 docker compose up -d --build
 ```
 
-Open **http://&lt;your-host&gt;:9100**, click **Configure** on a service, paste
-its URL and API key, and hit **Run now**. Backups land in `./backups/<service>/`.
+Open **http://&lt;your-host&gt;:9100** and create the admin password with the setup
+code from `docker logs homelab-takeout`. Click **+ Add a service**, pick your apps,
+fill in each one's URL and API key, and hit **Back up now**. Backups land in
+`./backups/<service>/`.
 
 There's no prebuilt image on purpose: you build from the code you just cloned.
 To update, `git pull` and run the same `docker compose up -d --build`.

@@ -27,7 +27,11 @@ def create_app(
     auth: AuthManager,
 ) -> FastAPI:
     """Create and configure the FastAPI app for Homelab Takeout."""
-    app = FastAPI(title="Homelab Takeout", version="1.0.0")
+    # No /docs, /redoc or /openapi.json: they sit outside the login check and Swagger UI
+    # loads scripts from a CDN, which the Content-Security-Policy blocks.
+    app = FastAPI(
+        title="Homelab Takeout", version="1.0.0", docs_url=None, redoc_url=None, openapi_url=None
+    )
 
     # Starlette runs the last-added middleware first: the Host/cross-site guards must
     # wrap the login check, so they run before it and their headers reach 401s too.

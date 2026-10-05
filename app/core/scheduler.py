@@ -110,6 +110,31 @@ class BackupScheduler:
         svc["enabled"] = enabled
         self._save_config()
 
+    def add_service(self, worker_type: str) -> dict:
+        """Add a service for ``worker_type`` (named after it) and persist the change."""
+        worker_class = self.registry.get_class(worker_type)
+        if worker_class is None:
+            raise KeyError(worker_type)
+        services = self._config.setdefault("services", [])
+        # ponytail: one service per app type; add a name field when someone runs two of one app.
+        if any(s["name"] == worker_type for s in services):
+            raise ValueError(worker_type)
+        svc: dict[str, Any] = {"name": worker_type, "type": worker_type, "enabled": True}
+        options = {s.option_key: s.key for s in worker_class.env_var_specs if s.option_key}
+        if options:
+            svc["options"] = options
+        services.append(svc)
+        self._save_config()
+        return svc
+
+    def remove_service(self, service_name: str) -> None:
+        """Drop a service from the config. Its settings in .env and its backups stay."""
+        services = self._config.get("services", [])
+        if not any(s["name"] == service_name for s in services):
+            raise KeyError(service_name)
+        self._config["services"] = [s for s in services if s["name"] != service_name]
+        self._save_config()
+
     def is_running(self, service_name: str) -> bool:
         """Return whether a backup for the named service is in progress."""
         return self._running.get(service_name, False)
@@ -264,6 +289,7 @@ class BackupScheduler:
             "started_at": result.started_at.isoformat(),
             "finished_at": result.finished_at.isoformat(),
             "output_files": [str(f) for f in result.output_files],
+            "size_bytes": sum(f.stat().st_size for f in result.output_files if f.is_file()),
         }
         if uploads:
             state["uploads"] = uploads
