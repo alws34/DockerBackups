@@ -89,7 +89,12 @@ class VaultwardenEncryptedJsonWorker(BackupWorker):
         appdata_dir.mkdir(parents=True, exist_ok=True)
 
         timestamp = started_at.strftime("%Y%m%d_%H%M%S")
-        output_file = backup_dir / f"vaultwarden_encrypted_json_{timestamp}.json"
+        # Older configs call this service "vaultwarden"; keep its file names unchanged so
+        # retention (which sorts by name) keeps working. Extra instances use their own name.
+        prefix = self.service_name
+        if prefix in ("vaultwarden", self.worker_type):
+            prefix = "vaultwarden_encrypted_json"
+        output_file = backup_dir / f"{prefix}_{timestamp}.json"
 
         base_env = {
             **os.environ,
@@ -156,7 +161,7 @@ class VaultwardenEncryptedJsonWorker(BackupWorker):
 
             self.cleanup_old_files(
                 backup_dir,
-                "vaultwarden_encrypted_json_*.json",
+                f"{prefix}_*.json",
                 context.retention_days,
             )
 

@@ -138,12 +138,12 @@ class BarAssistantWorker(BackupWorker):
                     except requests.RequestException as e:
                         logger.warning(f"bar_assistant: skipping {endpoint}: {e}")
 
-            archive = backup_dir / f"bar_assistant_{timestamp}.tar.gz"
+            archive = backup_dir / f"{self.service_name}_{timestamp}.tar.gz"
             with tarfile.open(archive, "w:gz") as tar:
-                tar.add(work, arcname=f"bar_assistant_{timestamp}")
+                tar.add(work, arcname=f"{self.service_name}_{timestamp}")
 
         archive.chmod(0o600)
-        self.cleanup_old_files(backup_dir, "bar_assistant_*.tar.gz", context.retention_days)
+        self.cleanup_old_files(backup_dir, f"{self.service_name}_*.tar.gz", context.retention_days)
 
         return BackupResult(
             service_name=self.service_name,

@@ -73,7 +73,11 @@ tests/              — pytest unit tests; no live network or Docker required
 
 1. Create `app/workers/<name>.py` inheriting `BackupWorker`.
 2. Set class attributes: `worker_type`, `display_name`, `description`, `env_var_specs`.
-3. Implement `run(context: BackupContext) -> BackupResult`.
+3. Implement `run(context: BackupContext) -> BackupResult`. Read settings only through
+   `context.env` / `require_env` with the plain spec keys: for a second instance of the
+   app the scheduler maps its `<KEY>__<n>` values onto those keys. Name every output file
+   `f"{self.service_name}_{timestamp}..."` (or use `archive_json()`), never the app name:
+   retention only prunes files starting with the service's own name.
 4. Register in `app/core/registry.py → create_default_registry()`.
 5. Add the app's logo as `app/api/static/icons/<worker_type>.svg` (or `.png`, ≤ 96 px).
    Take it from [dashboard-icons](https://github.com/homarr-labs/dashboard-icons)

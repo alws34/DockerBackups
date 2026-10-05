@@ -134,22 +134,52 @@ class BackupScheduler:
         svc["enabled"] = enabled
         self._save_config()
 
-    def add_service(self, worker_type: str) -> dict:
-        """Add a service for ``worker_type`` (named after it) and persist the change."""
+    def add_service(self, worker_type: str, label: str = "") -> dict:
+        """Add an instance of ``worker_type`` and persist the change.
+
+        The first instance is named after the type and uses the plain setting names
+        (``ADGUARD_URL``). Further instances are ``<type>_<n>`` and keep their settings
+        under ``<KEY>__<n>`` (``ADGUARD_URL__2``), so two servers of one app can differ.
+        """
         worker_class = self.registry.get_class(worker_type)
         if worker_class is None:
             raise KeyError(worker_type)
         services = self._config.setdefault("services", [])
-        # ponytail: one service per app type; add a name field when someone runs two of one app.
-        if any(s["name"] == worker_type for s in services):
-            raise ValueError(worker_type)
+        names = {s["name"] for s in services}
         svc: dict[str, Any] = {"name": worker_type, "type": worker_type, "enabled": True}
+        if any(s["type"] == worker_type for s in services) or worker_type in names:
+            n = 2
+            while f"{worker_type}_{n}" in names:
+                n += 1
+            svc |= {"name": f"{worker_type}_{n}", "env_suffix": f"__{n}"}
+            svc["label"] = label.strip() or f"{worker_class.display_name} {n}"
+        elif label.strip():
+            svc["label"] = label.strip()
         options = {s.option_key: s.key for s in worker_class.env_var_specs if s.option_key}
         if options:
             svc["options"] = options
         services.append(svc)
         self._save_config()
         return svc
+
+    def set_label(self, service_name: str, label: str) -> None:
+        """Rename a service as shown in the GUI ("" goes back to the app's name)."""
+        svc = next((s for s in self._config.get("services", []) if s["name"] == service_name), None)
+        if svc is None:
+            raise KeyError(service_name)
+        if label.strip():
+            svc["label"] = label.strip()
+        else:
+            svc.pop("label", None)
+        self._save_config()
+
+    def instance_env(self, service_config: dict, env: dict[str, str]) -> dict[str, str]:
+        """The env a worker sees: an instance's ``<KEY>__<n>`` values under plain names."""
+        suffix = service_config.get("env_suffix", "")
+        worker_class = self.registry.get_class(service_config["type"])
+        if not suffix or worker_class is None:
+            return env
+        return {**env, **{s.key: env.get(s.key + suffix, "") for s in worker_class.env_var_specs}}
 
     def remove_service(self, service_name: str) -> None:
         """Drop a service from the config. Its settings in .env and its backups stay."""
@@ -212,6 +242,7 @@ class BackupScheduler:
         try:
             worker = self.registry.create(service_config)
             context = self._make_context()
+            context.env = self.instance_env(service_config, context.env)
             loop = asyncio.get_running_loop()
             result: BackupResult = await loop.run_in_executor(None, worker.run, context)
             self._persist_state(name, result)

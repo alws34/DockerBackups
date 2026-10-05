@@ -91,21 +91,23 @@ class WikiJsWorker(BackupWorker):
             logger.info(f"[{self.service_name}] Found {len(pages)} pages to export")
 
             timestamp = started_at.strftime("%Y%m%d_%H%M%S")
-            export_dir = backup_dir / f"wikijs_export_{timestamp}"
+            export_dir = backup_dir / f"{self.service_name}_export_{timestamp}"
             export_dir.mkdir(parents=True, exist_ok=True)
 
             for page in pages:
                 page_data = self._fetch_page(graphql_url, headers, page["id"])
                 self._write_page(export_dir, page_data)
 
-            output_file = backup_dir / f"wikijs_{timestamp}.tar.gz"
+            output_file = backup_dir / f"{self.service_name}_{timestamp}.tar.gz"
             with tarfile.open(output_file, "w:gz") as tar:
                 tar.add(export_dir, arcname="wikijs_export")
             output_file.chmod(0o600)
 
             shutil.rmtree(export_dir)
 
-            self.cleanup_old_files(backup_dir, "wikijs_*.tar.gz", context.retention_days)
+            self.cleanup_old_files(
+                backup_dir, f"{self.service_name}_*.tar.gz", context.retention_days
+            )
 
             return BackupResult(
                 service_name=self.service_name,
