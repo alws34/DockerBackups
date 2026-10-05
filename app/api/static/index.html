@@ -46,6 +46,22 @@
     </div>
   </div>
 
+  <div class="modal-backdrop" id="login-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="login-title">Log in</h2>
+        <button class="modal-close" onclick="closeLogin()">&#x2715;</button>
+      </div>
+      <p id="login-steps" class="login-steps"></p>
+      <div id="login-code" class="login-code"></div>
+      <div class="save-row">
+        <button class="btn btn-secondary" onclick="copyLoginCode()">Copy code</button>
+        <a id="login-link" class="btn btn-primary" target="_blank" rel="noopener noreferrer"></a>
+      </div>
+      <p id="login-status" class="login-status"></p>
+    </div>
+  </div>
+
   <div id="toast" class="toast"></div>
 
   <script src="/static/app.js"></script>
