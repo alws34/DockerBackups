@@ -1134,4 +1134,6 @@ websockets==17.2 \
     --hash=sha256:faa763b677e96f1beccc6b4d7e8c079dfeed2f249f57a19debc321b519ee64ec \
     --hash=sha256:fb78fb4158c12f77a934a003006784108a27a6553cfc0c6f10483c9c02e94f48 \
     --hash=sha256:fcce735ffd72ac4056db05325d9f0232382b74826f0196eb6a15ca903abdaa0f
-    # via uvicorn
+    # via
+    #   -r requirements.in
+    #   uvicorn
