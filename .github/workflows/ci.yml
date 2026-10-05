@@ -108,3 +108,42 @@ jobs:
       - name: Stop
         if: always()
         run: docker compose down
+
+  systemd-install:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Shellcheck
+        run: shellcheck scripts/*.sh
+      - name: Hardening score (offline)
+        run: scripts/check-service-hardening.sh
+      - name: Install as a systemd service
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-venv
+          sudo ./scripts/install.sh
+      - name: Service is active and the GUI answers
+        run: |
+          for _ in $(seq 60); do
+            if systemctl is-active --quiet homelab-takeout &&
+               curl -sf -o /dev/null http://127.0.0.1:9100/; then
+              break
+            fi
+            sleep 1
+          done
+          systemctl is-active homelab-takeout
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9100/)" = 200
+          systemd-analyze security homelab-takeout --no-pager | tail -n 1
+      - name: Service logs
+        if: failure()
+        run: sudo journalctl -u homelab-takeout --no-pager
+      - name: Uninstall and purge
+        run: |
+          sudo ./scripts/install.sh --uninstall --purge
+          for p in /etc/systemd/system/homelab-takeout.service /opt/homelab-takeout \
+                   /etc/homelab-takeout /var/lib/homelab-takeout /var/log/homelab-takeout; do
+            test ! -e "$p"
+          done
+          if id homelab-takeout 2>/dev/null; then exit 1; fi

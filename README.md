@@ -114,6 +114,29 @@ sudo chown -R 1000:1000 backups logs state config .env   # or your PUID:PGID
 docker compose up -d --build
 ```
 
+### Run without Docker (systemd)
+
+On any Linux with systemd and Python 3.12+ (plus `python3-venv` on Debian/Ubuntu):
+
+```bash
+git clone https://github.com/alws34/homelab-takeout.git && cd homelab-takeout
+sudo ./scripts/install.sh                   # add --with-bitwarden for Vaultwarden (needs Node.js + npm)
+```
+
+It runs as its own `homelab-takeout` user in a sandboxed unit
+(`systemd-analyze security homelab-takeout` rates it 1.1, "OK"), and the GUI is on port 9100.
+
+| What | Where |
+|---|---|
+| Code + virtualenv | `/opt/homelab-takeout` |
+| Config (`services.json`, `.env`, Google credentials) | `/etc/homelab-takeout` |
+| Backups and state | `/var/lib/homelab-takeout` |
+| Logs | `journalctl -u homelab-takeout -f` |
+
+To update, `git pull && sudo ./scripts/install.sh --upgrade`. To remove it, run
+`sudo ./scripts/install.sh --uninstall` (keeps config and backups), or add `--purge` to delete
+everything.
+
 ## How It Works
 
 ```mermaid

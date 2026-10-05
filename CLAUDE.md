@@ -116,6 +116,15 @@ PYTHONPATH=. \
 
 Open http://localhost:8080.
 
+## Running as a systemd Service (no Docker)
+
+`sudo ./scripts/install.sh [--with-bitwarden]` installs to `/opt/homelab-takeout` (code + venv),
+`/etc/homelab-takeout` (config), `/var/lib/homelab-takeout` (data), using the hardened unit
+`scripts/homelab-takeout.service`. Also `--upgrade`, `--uninstall [--purge]`. Logs:
+`journalctl -u homelab-takeout -f`. Keep the unit at "OK" or better: `scripts/check-service-hardening.sh`
+(needs systemd-analyze >= 250, e.g. in a `debian:trixie` container). Do not add
+`MemoryDenyWriteExecute=yes`: it crashes the Node.js-based Bitwarden CLI.
+
 ## Building and Running in Docker
 
 ```bash
