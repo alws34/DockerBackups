@@ -111,10 +111,10 @@ function destinationStatus(dest) {
 
 // ── rendering ──────────────────────────────────────────────────────────────
 
-function tileHead(name, [cls, word], open) {
-  return `<button class="tile-head" data-act="open" aria-expanded="${open}">
+function tileHead(name, [cls, word]) {
+  return `<button class="tile-head" data-act="open" aria-haspopup="dialog">
     <span class="tile-name">${esc(name)}</span>
-    <span class="head-right"><span class="badge ${cls}">${esc(word)}</span><span class="chev" aria-hidden="true">▾</span></span>
+    <span class="badge ${cls}">${esc(word)}</span>
   </button>`;
 }
 
@@ -268,9 +268,9 @@ function renderSummary() {
   $("#sum-list").innerHTML = notes.map(n => `<li>${n}</li>`).join("");
 }
 
-// Re-rendering replaces the open tile's inputs; carry over what the user was typing.
+// Re-rendering replaces the open details' inputs; carry over what the user was typing.
 function keepTyping(render) {
-  const typed = [...document.querySelectorAll(".tile.open input[id]:not([type=checkbox]), .tile.open textarea[id]")]
+  const typed = [...document.querySelectorAll("#detail-body input[id]:not([type=checkbox]), #detail-body textarea[id]")]
     .map(el => [el.id, el.value]);
   const focused = document.activeElement?.id;
   render();
@@ -281,24 +281,35 @@ function keepTyping(render) {
   if (focused) document.getElementById(focused)?.focus();
 }
 
-function render() {
-  keepTyping(() => {
-    $("#svc-grid").innerHTML = services.map(svc => {
-      const key = `s:${svc.name}`, open = openTile === key;
-      return `<div class="tile ${open ? "open" : ""} ${svc.enabled ? "" : "is-off"}" data-tile="${esc(key)}">
-        ${tileHead(svc.display_name, serviceStatus(svc), open)}
-        ${open ? serviceBody(svc) : ""}
-      </div>`;
-    }).join("") + `<button class="add-tile" data-act="catalog">+ Add a service</button>`;
+function renderDetail() {
+  const item = openTile && tileItem({ dataset: { tile: openTile } });
+  const dlg = $("#detail");
+  if (!item) {
+    openTile = null;
+    if (dlg.open) dlg.close();
+    return;
+  }
+  const isService = openTile.startsWith("s:");
+  const [cls, word] = isService ? serviceStatus(item) : destinationStatus(item);
+  $("#detail-name").textContent = item.display_name;
+  $("#detail-badge").className = `badge ${cls}`;
+  $("#detail-badge").textContent = word;
+  const body = $("#detail-body");
+  body.dataset.tile = openTile;
+  keepTyping(() => { body.innerHTML = isService ? serviceBody(item) : destinationBody(item); });
+  if (!dlg.open) dlg.showModal();
+}
 
-    $("#dst-grid").innerHTML = destinations.map(dest => {
-      const key = `d:${dest.type}`, open = openTile === key;
-      return `<div class="tile ${open ? "open" : ""} ${dest.enabled ? "" : "is-off"}" data-tile="${esc(key)}">
-        ${tileHead(dest.display_name, destinationStatus(dest), open)}
-        ${open ? destinationBody(dest) : ""}
-      </div>`;
-    }).join("");
-  });
+function render() {
+  $("#svc-grid").innerHTML = services.map(svc =>
+    `<div class="tile ${svc.enabled ? "" : "is-off"}" data-tile="${esc(`s:${svc.name}`)}">
+      ${tileHead(svc.display_name, serviceStatus(svc))}
+    </div>`).join("") + `<button class="add-tile" data-act="catalog">+ Add a service</button>`;
+  $("#dst-grid").innerHTML = destinations.map(dest =>
+    `<div class="tile ${dest.enabled ? "" : "is-off"}" data-tile="${esc(`d:${dest.type}`)}">
+      ${tileHead(dest.display_name, destinationStatus(dest))}
+    </div>`).join("");
+  if (openTile) renderDetail();
   renderSummary();
   $("#svc-count").textContent = services.length ? plural(services.length, "app") : "";
   $("#dst-count").textContent = `${destinations.filter(d => d.enabled).length} switched on`;
@@ -315,8 +326,7 @@ async function refresh() {
 
 function openAndShow(key) {
   openTile = key;
-  render();
-  document.querySelector(`[data-tile="${CSS.escape(key)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  renderDetail();
 }
 
 // ── services ───────────────────────────────────────────────────────────────
@@ -358,6 +368,7 @@ async function removeService(svc) {
   })) return;
   await api(`/api/services/${svc.name}`, { method: "DELETE" });
   openTile = null;
+  $("#detail").close();
   toast(`${svc.display_name} removed. Add it back any time.`);
   await refresh();
 }
@@ -730,11 +741,8 @@ document.addEventListener("click", guarded(async e => {
   const act = el.dataset.act;
   if (act === "catalog") return openCatalog();
   if (act === "svc-toggle" || act === "dst-toggle") return;   // handled on change
-  const tile = el.closest(".tile");
-  if (act === "open") {
-    openTile = openTile === tile.dataset.tile ? null : tile.dataset.tile;
-    return render();
-  }
+  const tile = el.closest("[data-tile]");
+  if (act === "open") return openAndShow(tile.dataset.tile);
   const item = tileItem(tile);
   if (item && tileActions[act]) await tileActions[act](item, tile);
 }));
@@ -742,7 +750,7 @@ document.addEventListener("click", guarded(async e => {
 document.addEventListener("change", guarded(async e => {
   const act = e.target.dataset.act;
   if (act !== "svc-toggle" && act !== "dst-toggle") return;
-  const item = tileItem(e.target.closest(".tile"));
+  const item = tileItem(e.target.closest("[data-tile]"));
   if (act === "svc-toggle") await setServiceEnabled(item, e.target.checked);
   else await setDestinationEnabled(item, e.target.checked);
 }));
@@ -763,6 +771,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#change-password").addEventListener("click", guarded(changePassword));
   $("#copy-code").addEventListener("click", copyLoginCode);
   $("#login-modal").addEventListener("close", () => clearInterval(loginPoll));
+  $("#detail").addEventListener("close", () => { openTile = null; });
   $("#cat-q").addEventListener("input", renderCatalog);
   checkAuth();
 });
