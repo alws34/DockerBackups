@@ -36,8 +36,7 @@ class GoogleDriveDestination(BackupDestination):
             key=ENABLED_ENV,
             label="Enable Google Drive",
             description=(
-                "Set to 'true' to upload backups to Google Drive "
-                "after each successful run."
+                "Set to 'true' to upload backups to Google Drive after each successful run."
             ),
             secret=False,
             required=False,
@@ -118,7 +117,9 @@ class GoogleDriveDestination(BackupDestination):
         )
         return folder["id"]
 
-    def _prune_old_files(self, service: Any, subfolder_id: str, keep_count: int, service_name: str) -> None:
+    def _prune_old_files(
+        self, service: Any, subfolder_id: str, keep_count: int, service_name: str
+    ) -> None:
         """Delete oldest files in subfolder beyond keep_count, oldest first."""
         if keep_count <= 0:
             return
@@ -147,15 +148,11 @@ class GoogleDriveDestination(BackupDestination):
             raise BackupError(f"File to upload does not exist: {file_path}")
 
         service = self._get_service()
-        subfolder_id = self._get_or_create_folder(
-            service, result.service_name, self.folder_id
-        )
+        subfolder_id = self._get_or_create_folder(service, result.service_name, self.folder_id)
         file_metadata = {"name": file_path.name, "parents": [subfolder_id]}
         media = MediaFileUpload(str(file_path), resumable=True)
         uploaded = (
-            service.files()
-            .create(body=file_metadata, media_body=media, fields="id,name")
-            .execute()
+            service.files().create(body=file_metadata, media_body=media, fields="id,name").execute()
         )
         logger.info(
             f"[{result.service_name}] Uploaded to Google Drive: "

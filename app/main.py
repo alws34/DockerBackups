@@ -49,14 +49,14 @@ async def main() -> None:
     port = int(os.environ.get("WEB_PORT", "8080"))
     uvicorn_config = uvicorn.Config(
         app,
-        host="0.0.0.0",
+        host="0.0.0.0",  # noqa: S104 — container network; GUI must be reachable from host
         port=port,
         log_level="warning",
         access_log=False,
     )
     server = uvicorn.Server(uvicorn_config)
 
-    logger.info(f"Starting backup agent | config={config_file} | web=http://0.0.0.0:{port}")
+    logger.info(f"Starting Homelab Takeout | config={config_file} | web=http://0.0.0.0:{port}")
 
     await asyncio.gather(
         scheduler.run_forever(),

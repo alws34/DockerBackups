@@ -33,10 +33,7 @@ def create_router(
         for svc in config.get("services", []):
             worker_class = registry.get_class(svc["type"])
             env_var_info = (
-                [
-                    spec.describe(env_values.get(spec.key, ""))
-                    for spec in worker_class.env_var_specs
-                ]
+                [spec.describe(env_values.get(spec.key, "")) for spec in worker_class.env_var_specs]
                 if worker_class
                 else []
             )
@@ -45,9 +42,7 @@ def create_router(
                     "name": svc["name"],
                     "type": svc["type"],
                     "enabled": svc.get("enabled", False),
-                    "display_name": (
-                        worker_class.display_name if worker_class else svc["type"]
-                    ),
+                    "display_name": (worker_class.display_name if worker_class else svc["type"]),
                     "description": worker_class.description if worker_class else "",
                     "is_running": scheduler.is_running(svc["name"]),
                     "last_result": scheduler.get_state(svc["name"]),

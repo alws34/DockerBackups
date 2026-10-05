@@ -21,14 +21,12 @@ def create_app(
     registry: WorkerRegistry,
     env_manager: EnvManager,
 ) -> FastAPI:
-    """Create and configure the FastAPI app for the backup agent."""
-    app = FastAPI(title="Service Backup Agent", version="1.0.0")
+    """Create and configure the FastAPI app for Homelab Takeout."""
+    app = FastAPI(title="Homelab Takeout", version="1.0.0")
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-    app.include_router(
-        services.create_router(scheduler, registry, env_manager), prefix="/api"
-    )
+    app.include_router(services.create_router(scheduler, registry, env_manager), prefix="/api")
     app.include_router(logs.create_router(), prefix="/api")
     app.include_router(env_vars.create_router(env_manager, registry), prefix="/api")
     app.include_router(destinations.create_router(env_manager), prefix="/api")

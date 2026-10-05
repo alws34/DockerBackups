@@ -132,9 +132,7 @@ async def test_state_persisted_after_success(
     monkeypatch.setenv("STATE_ROOT", str(state_dir))
     scheduler = BackupScheduler(str(config_file), registry)
     scheduler.load_config()
-    await scheduler.run_service(
-        {"name": "svc1", "type": "dummy", "enabled": True, "options": {}}
-    )
+    await scheduler.run_service({"name": "svc1", "type": "dummy", "enabled": True, "options": {}})
     state_file = state_dir / "svc1" / "last_result.json"
     assert state_file.exists()
     data = json.loads(state_file.read_text())

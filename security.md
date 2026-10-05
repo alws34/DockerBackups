@@ -61,7 +61,7 @@ The GUI has **no built-in authentication**. Treat it as an internal admin panel.
 Option A — Reverse proxy with auth (recommended):
 ```nginx
 location / {
-    auth_basic "Backup Agent";
+    auth_basic "Homelab Takeout";
     auth_basic_user_file /etc/nginx/.htpasswd;
     proxy_pass http://127.0.0.1:8080;
 }

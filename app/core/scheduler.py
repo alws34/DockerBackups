@@ -180,8 +180,7 @@ class BackupScheduler:
                 destination.upload(file_path, result, keep_count=keep_count)
             except Exception as e:  # noqa: BLE001 - isolate per-file upload failures
                 logger.error(
-                    f"[{result.service_name}] Google Drive upload failed "
-                    f"for {file_path.name}: {e}"
+                    f"[{result.service_name}] Google Drive upload failed for {file_path.name}: {e}"
                 )
 
     def _make_context(self) -> BackupContext:
