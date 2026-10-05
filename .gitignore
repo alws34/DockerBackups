@@ -38,6 +38,9 @@ Thumbs.db
 # Node (only present inside Docker build; not committed)
 node_modules/
 
+# Claude Code agent worktrees
+.claude/worktrees/
+
 # Internal planning docs
 docs/superpowers/
 init_instructions.md

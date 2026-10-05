@@ -44,6 +44,8 @@ class EnvVarSpec:
     required: bool
     # Key in service_config["options"] that points to this env var's name.
     option_key: str = ""
+    # Shown under an "Advanced" fold in the GUI.
+    advanced: bool = False
 
     def describe(self, raw_value: str) -> dict[str, object]:
         """Return a UI-facing dict, masking the value when the var is secret."""
@@ -55,6 +57,7 @@ class EnvVarSpec:
             "required": self.required,
             "configured": bool(raw_value),
             "value": "***" if self.secret else raw_value,
+            "advanced": self.advanced,
         }
 
 
