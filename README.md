@@ -133,6 +133,22 @@ sudo chown -R 1000:1000 backups logs state config .env   # or your PUID:PGID
 docker compose up -d --build
 ```
 
+### Upgrading from a version that shipped `config/services.json`
+
+`config/services.json` is no longer part of the repository; the app creates it on
+first start. If `git pull` refuses because of your local changes to it, keep your
+copy aside for the pull:
+
+```bash
+mv config/services.json config/services.json.mine
+git pull
+mv config/services.json.mine config/services.json
+docker compose up -d --build
+```
+
+If the file is gone anyway, the app recreates it with every app whose settings are
+already in `.env`; only the schedule and retention go back to their defaults.
+
 ### Run without Docker (systemd)
 
 On any Linux with systemd and Python 3.12+ (plus `python3-venv` on Debian/Ubuntu):
@@ -233,7 +249,7 @@ Full threat model: [`docs/threat-model.md`](docs/threat-model.md). To report a v
 3. Implement `run(context) -> BackupResult`. Most workers just call `fetch_json()`
    and `archive_json()` from the base class
 4. Register it in `app/core/registry.py → create_default_registry()`
-5. Add an entry to `config/services.json` and a guide under `docs/services/`
+5. Add a guide under `docs/services/` (the app shows up in the GUI's app picker)
 
 The GUI picks up new workers automatically. [`app/workers/spoolman.py`](app/workers/spoolman.py)
 is a complete 48-line example.

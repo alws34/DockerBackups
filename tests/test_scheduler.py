@@ -10,7 +10,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.core.context import BackupResult
-from app.core.registry import WorkerRegistry
+from app.core.env_manager import EnvManager
+from app.core.registry import WorkerRegistry, create_default_registry
 from app.core.scheduler import BackupScheduler
 
 
@@ -143,3 +144,22 @@ def test_is_running_default_false(config_file: Path, registry: MagicMock) -> Non
     """A service that has not run should report as not running."""
     scheduler = BackupScheduler(str(config_file), registry)
     assert scheduler.is_running("svc1") is False
+
+
+def test_first_start_creates_empty_config(tmp_path: Path):
+    config = tmp_path / "config" / "services.json"
+    env_file = tmp_path / ".env"
+    env_file.touch()
+    scheduler = BackupScheduler(str(config), create_default_registry(), EnvManager(env_file))
+    scheduler.load_config()
+    assert json.loads(config.read_text())["services"] == []
+
+
+def test_first_start_after_upgrade_restores_configured_apps(tmp_path: Path):
+    config = tmp_path / "services.json"
+    env_file = tmp_path / ".env"
+    # Snipe-IT fully set up, n8n only half: only Snipe-IT comes back.
+    env_file.write_text("SNIPEIT_URL=http://s\nSNIPEIT_API_KEY=k\nN8N_URL=http://n\n")
+    scheduler = BackupScheduler(str(config), create_default_registry(), EnvManager(env_file))
+    scheduler.load_config()
+    assert [s["name"] for s in json.loads(config.read_text())["services"]] == ["snipeit"]

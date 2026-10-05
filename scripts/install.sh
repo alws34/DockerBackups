@@ -101,10 +101,10 @@ install -d -m 755 "$PREFIX"
 install -d -m 700 -o "$NAME" -g "$NAME" "$CONF_DIR" "$DATA_DIR" "$DATA_DIR/backups" "$DATA_DIR/state" "$LOG_DIR"
 
 # Config: copy defaults only when absent, never overwrite the user's edits.
-[ -f "$CONF_DIR/services.json" ] || cp "$REPO/config/services.json" "$CONF_DIR/services.json"
+# services.json is created by the app on first start (empty dashboard).
 [ -f "$CONF_DIR/.env" ] || cp "$REPO/.env.example" "$CONF_DIR/.env"
-chown "$NAME:$NAME" "$CONF_DIR/services.json" "$CONF_DIR/.env"
-chmod 600 "$CONF_DIR/services.json" "$CONF_DIR/.env"
+chown "$NAME:$NAME" "$CONF_DIR/.env"
+chmod 600 "$CONF_DIR/.env"
 
 # ── Code and Python dependencies ────────────────────────────────────────────
 rm -rf "$PREFIX/app" "$PREFIX/venv"

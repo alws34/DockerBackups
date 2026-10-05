@@ -53,8 +53,28 @@ class BackupScheduler:
         self._running: dict[str, bool] = {}
 
     def load_config(self) -> None:
-        """Load the JSON service configuration from disk into memory."""
-        self._config = json.loads(self.config_file.read_text())
+        """Load the JSON service configuration, creating it on first start."""
+        if self.config_file.exists():
+            self._config = json.loads(self.config_file.read_text())
+            return
+        self._config = {
+            "schedule": {"daily_at": _DEFAULT_DAILY_AT, "run_on_start": False, "interval_hours": 0},
+            "retention": {
+                "keep_days": _DEFAULT_KEEP_DAYS,
+                "remote_keep_count": _DEFAULT_REMOTE_KEEP_COUNT,
+            },
+            "services": [],
+        }
+        self.config_file.parent.mkdir(parents=True, exist_ok=True)
+        # New installs start with an empty dashboard. Older versions shipped services.json
+        # in git; when upgrading, put back every app whose settings are already in .env.
+        env = self.env_manager.read() if self.env_manager else {}
+        for worker_type, worker_class in self.registry.all().items():
+            required = [s.key for s in worker_class.env_var_specs if s.required]
+            if required and all(env.get(key) for key in required):
+                self.add_service(worker_type)
+        self._save_config()
+        logger.info(f"Created {self.config_file} with {len(self._config['services'])} app(s)")
 
     def _save_config(self) -> None:
         """Persist the in-memory configuration back to disk as pretty JSON."""
