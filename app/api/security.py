@@ -4,8 +4,11 @@ The GUI holds credentials for every backed-up service, so a malicious web page t
 visits must not be able to drive it. Two attacks matter:
 
 - DNS rebinding: an attacker's hostname re-resolves to this server, making their page
-  same-origin with the GUI. Blocked by only accepting Host headers that are IP literals,
-  ``localhost``, or names listed in ``ALLOWED_HOSTS``.
+  same-origin with the GUI. With sign-in on, that page gets nothing: the browser never
+  sends the session cookie to the attacker's hostname, so every API call is refused. Only
+  with sign-in off (AUTH_MODE=off) is the Host header checked: IP literals, ``localhost``
+  and names listed in ``ALLOWED_HOSTS`` are accepted. Any hostname a reverse proxy uses
+  therefore works without configuration while sign-in is on.
 - Cross-site request forgery: another origin submits a form/fetch that changes state.
   Blocked by rejecting non-safe methods whose Fetch Metadata / Origin headers say the
   request came from another site.
@@ -69,8 +72,14 @@ def is_cross_site_write(method: str, headers: dict[str, str]) -> bool:
     return urlsplit(origin).netloc != headers.get("host", "")
 
 
-def install_security_guards(app: FastAPI, allowed_hosts: frozenset[str]) -> None:
-    """Attach the Host check, cross-site write check and security headers to ``app``."""
+def install_security_guards(
+    app: FastAPI, allowed_hosts: frozenset[str], check_host: Callable[[], bool] = lambda: True
+) -> None:
+    """Attach the Host check, cross-site write check and security headers to ``app``.
+
+    ``check_host`` is called per request, so turning sign-in off in the GUI switches the
+    Host check on immediately.
+    """
 
     @app.middleware("http")
     async def guard(
@@ -78,9 +87,10 @@ def install_security_guards(app: FastAPI, allowed_hosts: frozenset[str]) -> None
     ) -> Response:
         headers = {k.lower(): v for k, v in request.headers.items()}
         host = headers.get("host", "")
-        if not host_allowed(host, allowed_hosts):
+        if check_host() and not host_allowed(host, allowed_hosts):
             response: Response = PlainTextResponse(
-                f"Host '{host}' is not allowed. Add it to ALLOWED_HOSTS in .env and restart.",
+                f"Host '{host}' is not allowed while sign-in is off. Turn sign-in on, or "
+                "add the name to ALLOWED_HOSTS in .env and restart.",
                 status_code=400,
             )
         elif is_cross_site_write(request.method, headers):

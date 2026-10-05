@@ -186,9 +186,19 @@ async def test_unauthenticated_responses_still_get_security_headers(make_app):
     assert headers["x-frame-options"] == "DENY"
     assert "script-src 'self'" in headers["content-security-policy"]
     assert (await call(app, "GET", "/docs"))[0] == 404
-    # The rebinding check runs before the login check.
-    status, _, _ = await call(app, "GET", "/api/settings", headers={"host": "evil.example"})
-    assert status == 400
+
+
+async def test_any_hostname_works_with_sign_in_but_not_without(make_app):
+    # Reverse-proxy names need no ALLOWED_HOSTS entry: without a session cookie for that
+    # name the API answers 401 anyway, so a DNS-rebinding page gets nothing.
+    app, _ = make_app()
+    proxied = {"host": "backup.home.example"}
+    assert (await call(app, "GET", "/", headers=proxied))[0] == 200
+    assert (await call(app, "GET", "/api/settings", headers=proxied))[0] == 401
+    # With sign-in off the Host allow-list is the only defence, so it applies.
+    app, _ = make_app({"AUTH_MODE": "off"})
+    assert (await call(app, "GET", "/api/settings", headers=proxied))[0] == 400
+    assert (await call(app, "GET", "/api/settings"))[0] == 200
 
 
 async def test_page_and_static_stay_public(make_app):
