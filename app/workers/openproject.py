@@ -78,6 +78,19 @@ class OpenProjectWorker(BackupWorker):
                     ) from e
                 raise
 
+            skipped: dict[str, str] = {}
+
+            def optional(name: str, href: str) -> list:
+                # Sections the token may not be allowed to see: skip them instead of
+                # failing the whole backup, and say so in skipped.json.
+                try:
+                    return collect(href)
+                except BackupError as e:
+                    if "403" not in str(e):
+                        raise
+                    skipped[name] = "not allowed for this token (403)"
+                    return []
+
             # filters=[] overrides the default "open status only" filter, so closed ones come too.
             work_packages = collect("api/v3/work_packages", filters="[]")
             files = {
@@ -93,11 +106,11 @@ class OpenProjectWorker(BackupWorker):
                 "statuses": collect("api/v3/statuses"),
                 "types": collect("api/v3/types"),
                 "priorities": collect("api/v3/priorities"),
-                "time_entries": collect("api/v3/time_entries"),
-                "memberships": collect("api/v3/memberships"),
-                "principals": collect("api/v3/principals"),
-                "queries": collect("api/v3/queries"),
-                "news": collect("api/v3/news"),
+                "time_entries": optional("time_entries", "api/v3/time_entries"),
+                "memberships": optional("memberships", "api/v3/memberships"),
+                "principals": optional("principals", "api/v3/principals"),
+                "queries": optional("queries", "api/v3/queries"),
+                "news": optional("news", "api/v3/news"),
                 # ponytail: one request per work package; fine for homelab sizes.
                 "attachments": {
                     wp["id"]: collect(wp["_links"]["attachments"]["href"])
@@ -105,4 +118,5 @@ class OpenProjectWorker(BackupWorker):
                     if "attachments" in wp["_links"]
                 },
             }
+            files["skipped"] = skipped
         return self.archive_json(context, started_at, files)

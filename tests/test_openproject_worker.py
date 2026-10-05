@@ -94,3 +94,21 @@ def test_bad_token_gives_actionable_error(tmp_path: Path) -> None:
     with patch("requests.Session.request", return_value=resp):
         with pytest.raises(BackupError, match="OPENPROJECT_API_TOKEN"):
             OpenProjectWorker({"name": "openproject", "type": "openproject"}).run(_ctx(tmp_path))
+
+
+def test_sections_the_token_cannot_see_are_skipped(tmp_path: Path) -> None:
+    forbidden = MagicMock()
+    forbidden.raise_for_status.side_effect = requests.HTTPError("403 Client Error: Forbidden")
+
+    def route(method: str, url: str, **kw: object) -> MagicMock:
+        if url.endswith(("/time_entries", "/queries")):
+            return forbidden
+        return _coll([])
+
+    with patch("requests.Session.request", side_effect=route):
+        result = OpenProjectWorker({"name": "openproject", "type": "openproject"}).run(
+            _ctx(tmp_path)
+        )
+    files = _archive(result)
+    assert files["time_entries"] == [] and files["queries"] == []
+    assert set(files["skipped"]) == {"time_entries", "queries"}

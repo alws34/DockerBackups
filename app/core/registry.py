@@ -54,10 +54,10 @@ def create_default_registry() -> WorkerRegistry:
     from app.workers.manyfold import ManyfoldWorker
     from app.workers.n8n import N8nWorker
     from app.workers.nginx_proxy_manager import NginxProxyManagerWorker
-    from app.workers.plex import PlexWorker
     from app.workers.openproject import OpenProjectWorker
-    from app.workers.qbittorrent import QBittorrentWorker
     from app.workers.openwebui import OpenWebUIWorker
+    from app.workers.plex import PlexWorker
+    from app.workers.qbittorrent import QBittorrentWorker
     from app.workers.snipeit import SnipeItWorker
     from app.workers.sparkyfitness import SparkyFitnessWorker
     from app.workers.spoolman import SpoolmanWorker

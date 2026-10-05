@@ -102,3 +102,14 @@ def test_missing_key_fails(tmp_path: Path) -> None:
         SparkyFitnessWorker({"name": "sparky", "type": "sparkyfitness"}).run(
             _ctx(tmp_path, {"SPARKYFITNESS_URL": "http://s"})
         )
+
+
+def test_scan_starts_at_the_account_creation_year():
+    from datetime import date
+
+    from app.workers.sparkyfitness import _FIRST_YEAR, _first_year
+
+    assert _first_year({"created_at": "2024-03-01T10:00:00Z"}) == 2024
+    assert _first_year({"createdAt": "2025-01-02"}) == 2025
+    assert _first_year({}) == _FIRST_YEAR
+    assert _first_year({"created_at": f"{date.today().year + 5}-01-01"}) == _FIRST_YEAR

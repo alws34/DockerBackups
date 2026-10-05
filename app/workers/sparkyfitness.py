@@ -12,8 +12,21 @@ from app.workers.base import BackupWorker, EnvVarSpec, fetch_json
 
 # No endpoint reports an account's first entry, so history is read one year at a
 # time from this year on (imports can backfill entries far before sign-up).
-# ponytail: fixed floor; ~8 small calls per empty year, lower it if anyone logs pre-2000 data.
+# Fallback when the account doesn't say when it was created; ~8 small calls per empty year.
 _FIRST_YEAR = 2000
+
+
+def _first_year(user: dict) -> int:
+    """Year the account was created (nothing can be logged before it), else _FIRST_YEAR."""
+    created = str(user.get("created_at") or user.get("createdAt") or "")
+    year = created[:4]
+    return (
+        int(year)
+        if year.isdigit() and _FIRST_YEAR <= int(year) <= date.today().year
+        else _FIRST_YEAR
+    )
+
+
 _PAGE_SIZE = 100
 
 
@@ -128,7 +141,7 @@ class SparkyFitnessWorker(BackupWorker):
             ranged: dict[str, list] = {}
             goals: dict = {}
             today = date.today().isoformat()
-            for year in range(_FIRST_YEAR, date.today().year + 2):  # +1: future-dated plans
+            for year in range(_first_year(user), date.today().year + 2):  # +1: future-dated plans
                 a, b = f"{year}-01-01", f"{year}-12-31"
                 window = {
                     "food_entries": get(f"/food-entries/range/{a}/{b}"),
