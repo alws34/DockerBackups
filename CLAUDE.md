@@ -40,8 +40,9 @@ app/
     base.py         — BackupWorker ABC + shared helpers (run_command, cleanup)
     *.py            — one file per service (vaultwarden, wikijs, snipeit, …)
   destinations/
-    base.py         — BackupDestination ABC
-    google_drive.py — Google Drive OAuth2 upload destination
+    base.py         — BackupDestination ABC + shared retention/secret helpers
+    registry.py     — ALL_DESTINATIONS and the enabled check
+    *.py            — google_drive, onedrive, sftp, smb, local_folder
   api/
     server.py       — FastAPI app factory
     routes/         — one file per API group (services, logs, env_vars, destinations, settings)
@@ -60,6 +61,17 @@ tests/              — pytest unit tests; no live network or Docker required
 5. Add entry to `config/services.json`.
 
 The GUI loads metadata dynamically — no frontend changes needed.
+
+## Adding a Destination
+
+1. Create `app/destinations/<name>.py` subclassing `BackupDestination`
+   (`app/destinations/base.py`): `from_env`, `put`, `list_names`, `remove`, `check`.
+   Retention (`ship` + `names_to_prune`) is shared; never delete files that don't
+   match `<service>_...`.
+2. Declare settings as `env_var_specs` (secrets `secret=True`); store tokens/keys
+   only via `write_private()` under `state_dir(env)`.
+3. Add it to `ALL_DESTINATIONS` in `app/destinations/registry.py` and write
+   `docs/destinations/<name>.md`. The GUI renders it automatically.
 
 ## Environment Variables
 

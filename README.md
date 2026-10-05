@@ -49,8 +49,8 @@ a schedule and ships the result somewhere safe.
 
 - 12 services supported out of the box, each a single small Python file
 - Daily at a fixed time, or every *N* hours, plus **Run now** and **Run all**
-- Local retention (default: 30 days) and Google Drive retention (default: last 3)
-- Optional upload to **Google Drive** after every successful run
+- Local retention (default: 30 days) and per-destination retention (default: last 3)
+- Copies to **Google Drive, OneDrive, SFTP, SMB** or any local folder after every run
 - Per-service status, last result, and logs in the GUI
 - Secrets live only in a `chmod 600` `.env` and are redacted from logs
 - Built from source on your own machine, so you know exactly what's running
@@ -76,7 +76,24 @@ a schedule and ships the result somewhere safe.
 caveats. 📄 a complete, readable record you rebuild from; there's no one-click
 import yet. Each guide has a **Restoring** section with the exact steps.
 
-**Destination:** [Google Drive](docs/services/google-drive.md). Missing your
+## Destinations
+
+Every successful backup is copied to the destinations you switch on, keeping
+the newest copies per service (3 by default). Files you put there yourself are
+never deleted.
+
+| Destination | How you connect |
+|---|---|
+| [Google Drive](docs/destinations/google-drive.md) | **Log in with Google**: enter a short code at google.com/device on any device |
+| [OneDrive](docs/destinations/onedrive.md) | **Log in with Microsoft**: same code-on-your-phone sign-in |
+| [SFTP](docs/destinations/sftp.md) | Host + password or SSH key; host key pinned on first connect |
+| [SMB share](docs/destinations/smb.md) | Server, share, user, password; SMB3 encrypted |
+| [Local folder](docs/destinations/local-folder.md) | Any path: NAS mount, rclone mount, Syncthing folder |
+
+Logins stay connected and refresh their tokens by themselves. The cloud apps
+can only see the folder they created, never the rest of your Drive or OneDrive.
+
+Missing your
 app? [Open an issue](https://github.com/alws34/homelab-takeout/issues), or
 [add a worker](#adding-a-service) (often under 100 lines).
 
@@ -108,7 +125,7 @@ flowchart LR
     W2 -->|GraphQL API| A2[(Wiki.js)]
     W3 -->|REST API| A3[(Your apps)]
     W1 & W2 & W3 --> L[./backups<br/>JSON · Markdown · tar.gz]
-    L -->|optional| G[Google Drive]
+    L -->|optional| G[Google Drive · OneDrive<br/>SFTP · SMB · local folder]
     UI[Web GUI :9100] -.->|configure · run · status| S
 ```
 
@@ -149,7 +166,7 @@ guides show how to use it. A restore helper for the 📄 services is on the road
 - Secrets live only in `.env` (enforced `chmod 600`) and are redacted from logs
 - Backup files are written `chmod 600`; the Vaultwarden export is encrypted
 - No Docker socket, no DB access, no telemetry, and no outbound calls except
-  to your own apps and (optionally) Google Drive
+  to your own apps and the destinations you switch on
 - **The web GUI has no built-in authentication.** Keep it on your LAN, or put it
   behind an auth proxy (Authelia, Authentik, Traefik forward-auth, nginx basic auth)
 
