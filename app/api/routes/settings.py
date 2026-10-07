@@ -19,7 +19,7 @@ class SettingsUpdate(BaseModel):
     interval_hours: int = 0
     run_on_start: bool
     keep_days: int
-    drive_keep_count: int = 3
+    remote_keep_count: int = 3
 
 
 def create_router(scheduler: BackupScheduler) -> APIRouter:
@@ -31,7 +31,7 @@ def create_router(scheduler: BackupScheduler) -> APIRouter:
         """Return the current schedule and retention settings."""
         return scheduler.get_settings()
 
-    @router.put("/settings")
+    @router.put("/settings", responses={400: {"description": "Invalid settings"}})
     async def update_settings(body: SettingsUpdate) -> dict:
         """Validate and persist updated schedule and retention settings."""
         if not _TIME_RE.match(body.daily_at):
@@ -40,11 +40,14 @@ def create_router(scheduler: BackupScheduler) -> APIRouter:
             raise HTTPException(status_code=400, detail="keep_days must be >= 1")
         if body.interval_hours < 0:
             raise HTTPException(status_code=400, detail="interval_hours must be >= 0")
-        if body.drive_keep_count < 1:
-            raise HTTPException(status_code=400, detail="drive_keep_count must be >= 1")
+        if body.remote_keep_count < 1:
+            raise HTTPException(status_code=400, detail="remote_keep_count must be >= 1")
         scheduler.update_settings(
-            body.daily_at, body.interval_hours, body.run_on_start, body.keep_days,
-            body.drive_keep_count,
+            body.daily_at,
+            body.interval_hours,
+            body.run_on_start,
+            body.keep_days,
+            body.remote_keep_count,
         )
         return {"status": "saved"}
 

@@ -20,3 +20,15 @@ skipped gracefully rather than failing the backup.)
 |------------------|----------|---------------------------------------------|
 | `N8N_URL`        | Yes      | Base URL, e.g. `https://n8n.your-domain.com` |
 | `N8N_API_KEY`    | Yes      | API key from Settings → n8n API             |
+
+## Restoring
+
+**Native import, one step.** The backup bundles all workflows in one file.
+Extract them and use n8n's CLI:
+
+```bash
+jq '.workflows' n8n_YYYYMMDD_HHMMSS.json > workflows.json
+n8n import:workflow --input=workflows.json
+```
+
+Re-create tags and variables from the `tags` and `variables` arrays. Credentials are never exported by the n8n API, so re-enter them.

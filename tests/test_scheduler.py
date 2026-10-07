@@ -10,7 +10,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.core.context import BackupResult
-from app.core.registry import WorkerRegistry
+from app.core.env_manager import EnvManager
+from app.core.registry import WorkerRegistry, create_default_registry
 from app.core.scheduler import BackupScheduler
 
 
@@ -19,7 +20,7 @@ def config_file(tmp_path: Path) -> Path:
     """Return a temporary services.json with one enabled and one disabled service."""
     config = {
         "schedule": {"daily_at": "03:30", "run_on_start": False},
-        "retention": {"keep_days": 7, "drive_keep_count": 5},
+        "retention": {"keep_days": 7, "remote_keep_count": 5},
         "destinations": {},
         "services": [
             {"name": "svc1", "type": "dummy", "enabled": True, "options": {}},
@@ -60,24 +61,24 @@ def test_load_config(config_file: Path, registry: MagicMock) -> None:
     scheduler = BackupScheduler(str(config_file), registry)
     scheduler.load_config()
     assert scheduler.get_config()["retention"]["keep_days"] == 7
-    assert scheduler.get_config()["retention"]["drive_keep_count"] == 5
+    assert scheduler.get_config()["retention"]["remote_keep_count"] == 5
 
 
-def test_get_settings_includes_drive_keep_count(config_file: Path, registry: MagicMock) -> None:
-    """get_settings should expose drive_keep_count from config."""
+def test_get_settings_includes_remote_keep_count(config_file: Path, registry: MagicMock) -> None:
+    """get_settings should expose remote_keep_count from config."""
     scheduler = BackupScheduler(str(config_file), registry)
     scheduler.load_config()
     settings = scheduler.get_settings()
-    assert settings["drive_keep_count"] == 5
+    assert settings["remote_keep_count"] == 5
 
 
-def test_update_settings_persists_drive_keep_count(config_file: Path, registry: MagicMock) -> None:
-    """update_settings should persist drive_keep_count to disk."""
+def test_update_settings_persists_remote_keep_count(config_file: Path, registry: MagicMock) -> None:
+    """update_settings should persist remote_keep_count to disk."""
     scheduler = BackupScheduler(str(config_file), registry)
     scheduler.load_config()
     scheduler.update_settings("04:00", 0, False, 14, 7)
     scheduler.load_config()
-    assert scheduler.get_settings()["drive_keep_count"] == 7
+    assert scheduler.get_settings()["remote_keep_count"] == 7
 
 
 @pytest.mark.asyncio
@@ -132,9 +133,7 @@ async def test_state_persisted_after_success(
     monkeypatch.setenv("STATE_ROOT", str(state_dir))
     scheduler = BackupScheduler(str(config_file), registry)
     scheduler.load_config()
-    await scheduler.run_service(
-        {"name": "svc1", "type": "dummy", "enabled": True, "options": {}}
-    )
+    await scheduler.run_service({"name": "svc1", "type": "dummy", "enabled": True, "options": {}})
     state_file = state_dir / "svc1" / "last_result.json"
     assert state_file.exists()
     data = json.loads(state_file.read_text())
@@ -145,3 +144,49 @@ def test_is_running_default_false(config_file: Path, registry: MagicMock) -> Non
     """A service that has not run should report as not running."""
     scheduler = BackupScheduler(str(config_file), registry)
     assert scheduler.is_running("svc1") is False
+
+
+def test_first_start_creates_empty_config(tmp_path: Path):
+    config = tmp_path / "config" / "services.json"
+    env_file = tmp_path / ".env"
+    env_file.touch()
+    scheduler = BackupScheduler(str(config), create_default_registry(), EnvManager(env_file))
+    scheduler.load_config()
+    assert json.loads(config.read_text())["services"] == []
+
+
+def test_first_start_after_upgrade_restores_configured_apps(tmp_path: Path):
+    config = tmp_path / "services.json"
+    env_file = tmp_path / ".env"
+    # Snipe-IT fully set up, n8n only half: only Snipe-IT comes back.
+    env_file.write_text("SNIPEIT_URL=http://s\nSNIPEIT_API_KEY=k\nN8N_URL=http://n\n")
+    scheduler = BackupScheduler(str(config), create_default_registry(), EnvManager(env_file))
+    scheduler.load_config()
+    assert [s["name"] for s in json.loads(config.read_text())["services"]] == ["snipeit"]
+
+
+def test_state_keeps_a_capped_run_history(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("STATE_ROOT", str(tmp_path / "state"))
+    scheduler = BackupScheduler(str(tmp_path / "services.json"), create_default_registry())
+    for i in range(35):
+        ok = i % 2 == 0
+        scheduler._write_state(
+            "svc",
+            {
+                "success": ok,
+                "finished_at": f"run-{i}",
+                "uploads": {"sftp": {"ok": i % 4 == 0}},
+            },
+        )
+    history = scheduler.get_state("svc")["history"]
+    assert len(history) == 30
+    assert history[-1]["finished_at"] == "run-34"
+    assert history[-1] == {"finished_at": "run-34", "success": True, "delivered": False}
+
+
+async def test_unsafe_service_name_never_becomes_a_path(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("STATE_ROOT", str(tmp_path / "state"))
+    scheduler = BackupScheduler(str(tmp_path / "services.json"), create_default_registry())
+    assert await scheduler.run_service({"name": "../../etc", "type": "n8n"}) is None
+    assert scheduler.get_state("../../etc") is None
+    assert not (tmp_path / "etc").exists()

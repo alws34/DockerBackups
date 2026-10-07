@@ -3,51 +3,196 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Service Backup Agent</title>
+  <meta name="color-scheme" content="light dark" />
+  <title>Homelab Takeout</title>
+  <link rel="icon" href="data:," />
   <link rel="stylesheet" href="/static/style.css" />
+  <script src="/static/app.js" defer></script>
 </head>
 <body>
-  <header>
-    <h1>Service Backup Agent</h1>
-    <button id="refresh-btn">Refresh</button>
-  </header>
+  <div class="wrap">
+    <header class="top">
+      <h1 class="wordmark">Homelab Takeout</h1>
+      <div class="spacer"></div>
+      <nav id="top-nav" hidden>
+        <button class="btn primary" data-act="catalog">Add a service</button>
+        <button class="btn" id="run-all">Back up all now</button>
+        <button class="btn quiet" id="open-settings">Settings</button>
+        <button class="btn quiet" id="logout-btn" hidden>Log out</button>
+      </nav>
+    </header>
 
-  <main>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin:2rem 0 .75rem">
-      <div class="section-title" style="margin:0">Services</div>
-      <button class="btn btn-primary btn-sm" onclick="runAll()">Run All</button>
-    </div>
-    <div id="service-grid" class="grid">
-      <p style="color:var(--muted)">Loading…</p>
-    </div>
+    <main id="app" hidden>
+      <p class="statusbar" id="statusbar" aria-live="polite">Loading…</p>
 
-    <div class="section-title">Destinations</div>
-    <div id="destination-grid" class="grid">
-      <p style="color:var(--muted)">Loading…</p>
-    </div>
+      <section>
+        <h2 class="section">Services</h2>
+        <div class="grid" id="svc-grid"></div>
+      </section>
 
-    <div class="section-title">Settings</div>
-    <div id="settings-panel">
-      <p style="color:var(--muted)">Loading…</p>
-    </div>
-  </main>
+      <section>
+        <h2 class="section">Destinations</h2>
+        <div class="chips" id="dst-row"></div>
+      </section>
+    </main>
 
-  <div class="modal-backdrop" id="config-modal">
-    <div class="modal">
-      <div class="modal-header">
-        <h2 id="modal-title">Configure</h2>
-        <button class="modal-close" onclick="closeModal()">&#x2715;</button>
-      </div>
-      <div class="env-form" id="env-form"></div>
-      <div class="save-row">
-        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveEnvVars()">Save</button>
-      </div>
+    <div id="auth-screen" class="auth-screen" hidden>
+      <form id="auth-form" class="auth-card">
+        <h2 id="auth-heading">Sign in</h2>
+        <p id="auth-intro" class="muted"></p>
+        <label for="auth-username" hidden>Username</label>
+        <input id="auth-username" type="text" name="username" value="admin" autocomplete="username" hidden />
+        <div class="field" id="setup-code-field" hidden>
+          <label for="auth-setup-code">Setup code</label>
+          <input id="auth-setup-code" autocomplete="one-time-code" spellcheck="false" />
+          <div class="hint">Printed in the server logs (<code>docker logs homelab-takeout</code> or
+            <code>journalctl -u homelab-takeout</code>) and saved in <code>state/setup-code.txt</code>.</div>
+        </div>
+        <div class="field" id="auth-password-field">
+          <label for="auth-password">Password</label>
+          <input id="auth-password" type="password" required />
+        </div>
+        <div class="field" id="auth-confirm-field" hidden>
+          <label for="auth-confirm">Repeat password</label>
+          <input id="auth-confirm" type="password" autocomplete="new-password" />
+          <div class="hint">At least 12 characters. A few random words work well.</div>
+        </div>
+        <p id="auth-error" class="form-error" role="alert"></p>
+        <button class="btn primary" type="submit" id="auth-submit">Sign in</button>
+      </form>
     </div>
   </div>
 
-  <div id="toast" class="toast"></div>
+  <dialog id="detail" aria-labelledby="detail-name">
+    <div class="d-head">
+      <img id="detail-icon" class="logo" alt="" width="32" height="32" />
+      <h3 id="detail-name">Details</h3>
+      <span id="detail-badge"></span>
+      <div class="spacer"></div>
+      <button class="btn quiet" data-close aria-label="Close">Close</button>
+    </div>
+    <div id="detail-body"></div>
+  </dialog>
 
-  <script src="/static/app.js"></script>
+  <dialog id="confirm">
+    <form method="dialog" class="d-in">
+      <h3 id="c-title">Are you sure?</h3>
+      <p id="c-text" class="muted"></p>
+      <code id="c-code" class="code-block" hidden></code>
+      <div class="d-actions">
+        <button class="btn" value="cancel">Cancel</button>
+        <button class="btn danger" value="ok" id="c-ok"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="catalog">
+    <div class="d-in">
+      <h3>Add a service</h3>
+      <p class="muted">Pick the apps you run. Only what you add shows on the dashboard.</p>
+      <input class="search" id="cat-q" type="search" placeholder="Search apps" aria-label="Search apps" />
+      <div class="cat-list" id="cat-list"></div>
+      <p class="muted small">Missing your app? Each one is a single Python file; see CONTRIBUTING.md.</p>
+      <div class="d-actions"><button class="btn" data-close>Done</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="dest-picker">
+    <div class="d-in">
+      <h3>Add a destination</h3>
+      <p class="muted">Where should copies of your backups go? Pick one to set it up.</p>
+      <div class="cat-list" id="dest-list"></div>
+      <div class="d-actions"><button class="btn" data-close>Done</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="login-modal">
+    <div class="d-in">
+      <h3 id="login-title">Log in</h3>
+      <p id="login-steps" class="muted"></p>
+      <div id="login-code" class="login-code"></div>
+      <div class="d-actions">
+        <button class="btn" id="copy-code">Copy code</button>
+        <a id="login-link" class="btn primary" target="_blank" rel="noopener noreferrer">Open the sign-in page</a>
+      </div>
+      <p id="login-status" class="small"></p>
+      <div class="d-actions"><button class="btn quiet" data-close>Cancel</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="settings-dialog">
+    <div class="d-in">
+      <h3>Settings</h3>
+      <form id="schedule-form" class="panel">
+        <h4>Schedule and retention</h4>
+        <div class="field">
+          <label for="setting-daily-at">Daily backup time</label>
+          <input id="setting-daily-at" type="time" required />
+        </div>
+        <div class="field">
+          <label for="setting-interval-hours">Or repeat every N hours</label>
+          <input id="setting-interval-hours" type="number" min="0" step="1" />
+          <div class="hint">0 runs once a day at the time above.</div>
+        </div>
+        <div class="field">
+          <label for="setting-keep-days">Keep backups on this server for (days)</label>
+          <input id="setting-keep-days" type="number" min="1" step="1" required />
+        </div>
+        <div class="field">
+          <label for="setting-remote-keep-count">Copies to keep at each destination, per service</label>
+          <input id="setting-remote-keep-count" type="number" min="1" step="1" required />
+          <div class="hint">Older copies are removed after each upload. Files you put there yourself are never touched.</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="setting-run-on-start" /> Back up when the app starts</label>
+        <div class="d-actions"><button class="btn primary" type="submit">Save schedule</button></div>
+      </form>
+
+      <form id="security-form" class="panel">
+        <h4>Sign-in</h4>
+        <div class="field">
+          <label for="auth-mode">How people sign in</label>
+          <select id="auth-mode">
+            <option value="password">Admin password</option>
+            <option value="proxy">My sign-in proxy (Authelia, Authentik…)</option>
+            <option value="off">No sign-in</option>
+          </select>
+          <div class="hint" id="auth-mode-hint"></div>
+        </div>
+        <div id="proxy-fields">
+          <div class="field">
+            <label for="auth-proxies">Proxy IP addresses</label>
+            <input id="auth-proxies" placeholder="10.0.0.5, 172.18.0.0/16" spellcheck="false" />
+            <div class="hint">Only requests from these addresses may name the user.</div>
+          </div>
+          <div class="field">
+            <label for="auth-header">User header</label>
+            <input id="auth-header" spellcheck="false" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="auth-current">Current admin password</label>
+          <input id="auth-current" type="password" autocomplete="current-password" />
+          <div class="hint">Needed to change sign-in settings or the password.</div>
+        </div>
+        <div class="d-actions"><button class="btn primary" type="submit">Save sign-in settings</button></div>
+        <details>
+          <summary>Change admin password</summary>
+          <div class="field">
+            <label for="auth-new">New password</label>
+            <input id="auth-new" type="password" autocomplete="new-password" />
+          </div>
+          <div class="field">
+            <label for="auth-new-confirm">Repeat new password</label>
+            <input id="auth-new-confirm" type="password" autocomplete="new-password" />
+            <div class="hint">At least 12 characters. Other devices are signed out.</div>
+          </div>
+          <button class="btn" type="button" id="change-password">Change password</button>
+        </details>
+      </form>
+      <div class="d-actions"><button class="btn" data-close>Close</button></div>
+    </div>
+  </dialog>
+
+  <output class="toast" id="toast" hidden></output>
 </body>
 </html>

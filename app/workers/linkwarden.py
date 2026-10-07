@@ -21,16 +21,13 @@ class LinkwardenWorker(BackupWorker):
     worker_type: ClassVar[str] = "linkwarden"
     display_name: ClassVar[str] = "Linkwarden"
     description: ClassVar[str] = (
-        "Full export of bookmarks and collections "
-        "via Linkwarden API migration endpoint."
+        "Full export of bookmarks and collections via Linkwarden API migration endpoint."
     )
     env_var_specs: ClassVar[list[EnvVarSpec]] = [
         EnvVarSpec(
             key="LINKWARDEN_URL",
             label="Linkwarden URL",
-            description=(
-                "Base URL of your Linkwarden instance (e.g. http://linkwarden:3000)."
-            ),
+            description=("Base URL of your Linkwarden instance (e.g. http://linkwarden:3000)."),
             secret=False,
             required=True,
         ),
@@ -38,8 +35,7 @@ class LinkwardenWorker(BackupWorker):
             key="LINKWARDEN_ACCESS_TOKEN",
             label="Access Token",
             description=(
-                "Access token from Linkwarden Settings → "
-                "Access Tokens → New Access Token."
+                "Access token from Linkwarden Settings → Access Tokens → New Access Token."
             ),
             secret=True,
             required=True,
@@ -70,7 +66,7 @@ class LinkwardenWorker(BackupWorker):
         backup_dir.mkdir(parents=True, exist_ok=True)
 
         timestamp = started_at.strftime("%Y%m%d_%H%M%S")
-        output_file = backup_dir / f"linkwarden_{timestamp}.json"
+        output_file = backup_dir / f"{self.service_name}_{timestamp}.json"
         output_file.write_text(json.dumps(data, indent=2, ensure_ascii=False))
         output_file.chmod(0o600)
 
@@ -79,7 +75,7 @@ class LinkwardenWorker(BackupWorker):
         collections_count = len(data.get("collections", response.get("collections", [])))
         logger.info(f"linkwarden: {links_count} links, {collections_count} collections")
 
-        self.cleanup_old_files(backup_dir, "linkwarden_*.json", context.retention_days)
+        self.cleanup_old_files(backup_dir, f"{self.service_name}_*.json", context.retention_days)
 
         return BackupResult(
             service_name=self.service_name,

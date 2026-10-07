@@ -62,7 +62,9 @@ class ImmichWorker(BackupWorker):
                 page = 1
                 while page:
                     data = fetch_json(
-                        s, "POST", f"{api}/search/metadata",
+                        s,
+                        "POST",
+                        f"{api}/search/metadata",
                         json={**body, "page": page, "size": _PAGE_SIZE},
                     )["assets"]
                     items.extend(data["items"])

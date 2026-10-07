@@ -24,6 +24,10 @@ class WorkerRegistry:
             raise BackupError(f"Unknown worker type '{worker_type}'. Known types: {known}")
         return self._registry[worker_type](service_config)
 
+    def all(self) -> dict[str, type[BackupWorker]]:
+        """Return every registered worker type, in registration order."""
+        return dict(self._registry)
+
     def get_class(self, worker_type: str) -> type[BackupWorker] | None:
         """Return the worker class for a type, or ``None`` if not registered."""
         return self._registry.get(worker_type)
@@ -41,14 +45,23 @@ def create_default_registry() -> WorkerRegistry:
     """
     from app.workers.adguardhome import AdGuardHomeWorker
     from app.workers.bar_assistant import BarAssistantWorker
+    from app.workers.homeassistant import HomeAssistantWorker
     from app.workers.immich import ImmichWorker
+    from app.workers.jellyfin import JellyfinWorker
     from app.workers.karakeep import KarakeepWorker
     from app.workers.kitchenowl import KitchenOwlWorker
     from app.workers.linkwarden import LinkwardenWorker
+    from app.workers.manyfold import ManyfoldWorker
     from app.workers.n8n import N8nWorker
     from app.workers.nginx_proxy_manager import NginxProxyManagerWorker
+    from app.workers.openproject import OpenProjectWorker
+    from app.workers.openwebui import OpenWebUIWorker
+    from app.workers.plex import PlexWorker
+    from app.workers.qbittorrent import QBittorrentWorker
     from app.workers.snipeit import SnipeItWorker
+    from app.workers.sparkyfitness import SparkyFitnessWorker
     from app.workers.spoolman import SpoolmanWorker
+    from app.workers.uptimekuma import UptimeKumaWorker
     from app.workers.vaultwarden_encrypted_json import VaultwardenEncryptedJsonWorker
     from app.workers.wikijs import WikiJsWorker
 
@@ -66,6 +79,15 @@ def create_default_registry() -> WorkerRegistry:
         ImmichWorker,
         NginxProxyManagerWorker,
         AdGuardHomeWorker,
+        PlexWorker,
+        OpenProjectWorker,
+        QBittorrentWorker,
+        HomeAssistantWorker,
+        OpenWebUIWorker,
+        JellyfinWorker,
+        UptimeKumaWorker,
+        SparkyFitnessWorker,
+        ManyfoldWorker,
     ):
         registry.register(worker.worker_type, worker)
     return registry

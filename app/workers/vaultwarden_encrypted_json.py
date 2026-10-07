@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime
-from pathlib import Path
 from typing import ClassVar
 
 from app.core.context import BackupContext, BackupError, BackupResult
@@ -18,7 +17,7 @@ class VaultwardenEncryptedJsonWorker(BackupWorker):
     """Produce an encrypted JSON vault export using the ``bw`` Bitwarden CLI."""
 
     worker_type: ClassVar[str] = "vaultwarden_encrypted_json"
-    display_name: ClassVar[str] = "Vaultwarden (Encrypted JSON)"
+    display_name: ClassVar[str] = "Vaultwarden"
     description: ClassVar[str] = "Daily encrypted JSON vault export using the Bitwarden CLI."
     env_var_specs: ClassVar[list[EnvVarSpec]] = [
         EnvVarSpec(
@@ -90,7 +89,12 @@ class VaultwardenEncryptedJsonWorker(BackupWorker):
         appdata_dir.mkdir(parents=True, exist_ok=True)
 
         timestamp = started_at.strftime("%Y%m%d_%H%M%S")
-        output_file = backup_dir / f"vaultwarden_encrypted_json_{timestamp}.json"
+        # Older configs call this service "vaultwarden"; keep its file names unchanged so
+        # retention (which sorts by name) keeps working. Extra instances use their own name.
+        prefix = self.service_name
+        if prefix in ("vaultwarden", self.worker_type):
+            prefix = "vaultwarden_encrypted_json"
+        output_file = backup_dir / f"{prefix}_{timestamp}.json"
 
         base_env = {
             **os.environ,
@@ -126,13 +130,27 @@ class VaultwardenEncryptedJsonWorker(BackupWorker):
             self.run_command([bw, "sync"], env=session_env)
 
             self.run_command(
-                [bw, "export", "--format", "encrypted_json",
-                 "--password", export_password,
-                 "--output", str(output_file)],
+                [
+                    bw,
+                    "export",
+                    "--format",
+                    "encrypted_json",
+                    "--password",
+                    export_password,
+                    "--output",
+                    str(output_file),
+                ],
                 env=session_env,
-                redacted_command=[bw, "export", "--format", "encrypted_json",
-                                  "--password", "[redacted]",
-                                  "--output", str(output_file)],
+                redacted_command=[
+                    bw,
+                    "export",
+                    "--format",
+                    "encrypted_json",
+                    "--password",
+                    "[redacted]",
+                    "--output",
+                    str(output_file),
+                ],
             )
 
             if not output_file.exists() or output_file.stat().st_size == 0:
@@ -143,7 +161,7 @@ class VaultwardenEncryptedJsonWorker(BackupWorker):
 
             self.cleanup_old_files(
                 backup_dir,
-                "vaultwarden_encrypted_json_*.json",
+                f"{prefix}_*.json",
                 context.retention_days,
             )
 

@@ -92,12 +92,14 @@ def test_endpoint_failure_fails_backup(tmp_path: Path) -> None:
     import requests
 
     with patch("requests.Session.request", side_effect=requests.ConnectionError("down")):
+        worker = SpoolmanWorker({"name": "spoolman", "type": "spoolman"})
+        ctx = _ctx(tmp_path, {"SPOOLMAN_URL": "http://s"})
         with pytest.raises(BackupError, match="failed"):
-            SpoolmanWorker({"name": "spoolman", "type": "spoolman"}).run(
-                _ctx(tmp_path, {"SPOOLMAN_URL": "http://s"})
-            )
+            worker.run(ctx)
 
 
 def test_missing_env_fails(tmp_path: Path) -> None:
+    worker = SpoolmanWorker({"name": "spoolman", "type": "spoolman"})
+    ctx = _ctx(tmp_path, {})
     with pytest.raises(BackupError, match="SPOOLMAN_URL"):
-        SpoolmanWorker({"name": "spoolman", "type": "spoolman"}).run(_ctx(tmp_path, {}))
+        worker.run(ctx)

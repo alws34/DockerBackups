@@ -2,7 +2,7 @@
 
 ## Overview
 
-Service Backup Agent is a single-container Python service that backs up self-hosted
+Homelab Takeout is a single-container Python service that backs up self-hosted
 applications on a schedule. It exposes a web GUI for configuration and monitoring.
 
 ```
@@ -123,7 +123,6 @@ without a restart.
 | GET    | `/api/services`                   | All services + last state        |
 | POST   | `/api/services/{name}/trigger`    | Manual run                       |
 | PUT    | `/api/services/{name}/enabled`    | Toggle enabled flag              |
-| GET    | `/api/logs/{service}`             | Recent log lines                 |
 | GET    | `/api/env-vars/{type}`            | Env var specs for a worker type  |
 | PUT    | `/api/env-vars/{type}`            | Write values to `.env`           |
 | GET    | `/api/destinations`               | Destination list + auth status   |
@@ -150,6 +149,9 @@ without a restart.
 | `immich`                      | Immich (metadata)    | REST API + tar archive       |
 | `nginx_proxy_manager`         | Nginx Proxy Manager  | REST API (token login) + tar archive |
 | `adguardhome`                 | AdGuard Home         | REST API (basic auth) + tar archive |
+| `plex`                        | Plex                 | REST API (X-Plex-Token) + tar archive |
+| `jellyfin`                    | Jellyfin             | REST API (API key) + tar archive |
+| `uptimekuma`                  | Uptime Kuma          | Socket.IO API (login) + tar archive |
 
 See [`docs/services/`](docs/services/) for what each worker backs up and how
 to configure its credentials.

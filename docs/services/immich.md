@@ -28,3 +28,11 @@ narrower backup than an admin key.
 |---------------------|----------|-------------------------------------------------------|
 | `IMMICH_URL`         | Yes      | Base URL, e.g. `https://immich.your-domain.com`       |
 | `IMMICH_API_KEY`     | Yes      | API key from Account Settings → API Keys (read scope) |
+
+## Restoring
+
+This export is a **readable reference**, not a file the app can import directly. To rebuild, set up a fresh instance and re-create the records from the JSON (by hand, or with a short script against the same API endpoints the worker read from).
+
+Album and people records reference Immich **asset IDs**. A re-uploaded library
+gets new IDs, so this export works best for checking and rebuilding the
+organisation layer, not for replaying it blindly.

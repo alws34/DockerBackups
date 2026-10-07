@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -77,9 +77,9 @@ def test_missing_api_key_raises(tmp_path: Path) -> None:
 def test_run_creates_json(context: BackupContext) -> None:
     worker = N8nWorker(SERVICE_CONFIG)
     side_effects = [
-        _mock_response(MOCK_WORKFLOWS),   # workflows page 1
-        _mock_response(MOCK_TAGS),        # tags page 1
-        _mock_response(MOCK_VARIABLES),   # variables page 1
+        _mock_response(MOCK_WORKFLOWS),  # workflows page 1
+        _mock_response(MOCK_TAGS),  # tags page 1
+        _mock_response(MOCK_VARIABLES),  # variables page 1
     ]
     with patch("app.workers.n8n.requests.get", side_effect=side_effects):
         result = worker.run(context)

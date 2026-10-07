@@ -1,7 +1,8 @@
-# Secrets and credentials — NEVER commit
+# Your settings, secrets and data. Never tracked, so `git pull` can never overwrite or
+# delete them (tests/test_user_data.py checks this). Bind-mounted into the container.
 .env
-config/google-credentials.json
-config/google-tokens.json
+config/*
+!config/.gitkeep
 
 # Runtime data
 backups/
@@ -29,6 +30,7 @@ env/
 .ruff_cache/
 .mypy_cache/
 .coverage
+coverage.xml
 htmlcov/
 
 # OS artifacts
@@ -37,6 +39,9 @@ Thumbs.db
 
 # Node (only present inside Docker build; not committed)
 node_modules/
+
+# Claude Code agent worktrees
+.claude/worktrees/
 
 # Internal planning docs
 docs/superpowers/

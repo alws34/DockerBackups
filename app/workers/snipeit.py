@@ -94,11 +94,7 @@ class SnipeItWorker(BackupWorker):
                 resp.raise_for_status()
                 data = resp.json()
                 if offset == 0:
-                    keys = (
-                        list(data.keys())
-                        if isinstance(data, dict)
-                        else type(data).__name__
-                    )
+                    keys = list(data.keys()) if isinstance(data, dict) else type(data).__name__
                     logger.info(f"snipeit: {endpoint} response keys: {keys}")
                 # Snipe-IT uses "rows" at the top level.
                 if isinstance(data, list):
@@ -142,20 +138,19 @@ class SnipeItWorker(BackupWorker):
             if len(failed) == len(_ENDPOINTS):
                 raise BackupError(f"All Snipe-IT endpoints failed; check SNIPEIT_URL ({base_url})")
 
-            archive = backup_dir / f"snipeit_{timestamp}.tar.gz"
+            archive = backup_dir / f"{self.service_name}_{timestamp}.tar.gz"
             with tarfile.open(archive, "w:gz") as tar:
-                tar.add(work, arcname=f"snipeit_{timestamp}")
+                tar.add(work, arcname=f"{self.service_name}_{timestamp}")
 
         archive.chmod(0o600)
-        self.cleanup_old_files(backup_dir, "snipeit_*.tar.gz", context.retention_days)
+        self.cleanup_old_files(backup_dir, f"{self.service_name}_*.tar.gz", context.retention_days)
 
         return BackupResult(
             service_name=self.service_name,
             worker_type=self.worker_type,
             success=True,
             message=(
-                f"{total_records} records exported: {archive.name} "
-                f"({archive.stat().st_size} bytes)"
+                f"{total_records} records exported: {archive.name} ({archive.stat().st_size} bytes)"
             ),
             output_files=[archive],
             started_at=started_at,

@@ -24,8 +24,7 @@ class KitchenOwlWorker(BackupWorker):
     worker_type: ClassVar[str] = "kitchenowl"
     display_name: ClassVar[str] = "KitchenOwl"
     description: ClassVar[str] = (
-        "Exports recipes and household data via KitchenOwl API "
-        "using a long-lived token."
+        "Exports recipes and household data via KitchenOwl API using a long-lived token."
     )
     env_var_specs: ClassVar[list[EnvVarSpec]] = [
         EnvVarSpec(
@@ -111,9 +110,7 @@ class KitchenOwlWorker(BackupWorker):
                         json.dumps(items, indent=2, ensure_ascii=False)
                     )
                 except requests.RequestException as e:
-                    logger.warning(
-                        f"kitchenowl: could not fetch items for household {hh_id}: {e}"
-                    )
+                    logger.warning(f"kitchenowl: could not fetch items for household {hh_id}: {e}")
 
                 # Shopping lists
                 try:
@@ -123,16 +120,15 @@ class KitchenOwlWorker(BackupWorker):
                     )
                 except requests.RequestException as e:
                     logger.warning(
-                        f"kitchenowl: could not fetch shoppinglists "
-                        f"for household {hh_id}: {e}"
+                        f"kitchenowl: could not fetch shoppinglists for household {hh_id}: {e}"
                     )
 
-            archive = backup_dir / f"kitchenowl_{timestamp}.tar.gz"
+            archive = backup_dir / f"{self.service_name}_{timestamp}.tar.gz"
             with tarfile.open(archive, "w:gz") as tar:
-                tar.add(work, arcname=f"kitchenowl_{timestamp}")
+                tar.add(work, arcname=f"{self.service_name}_{timestamp}")
 
         archive.chmod(0o600)
-        self.cleanup_old_files(backup_dir, "kitchenowl_*.tar.gz", context.retention_days)
+        self.cleanup_old_files(backup_dir, f"{self.service_name}_*.tar.gz", context.retention_days)
 
         return BackupResult(
             service_name=self.service_name,
