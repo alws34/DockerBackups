@@ -90,6 +90,7 @@ const logo = (item, px = 28) => item.icon
   : `<span class="logo letter" aria-hidden="true">${esc(item.display_name.charAt(0))}</span>`;
 
 const statusTag = ([cls, word]) => `<span class="status ${cls}">${esc(word)}</span>`;
+const tileKey = (kind, id) => esc(`${kind}:${id}`);
 
 const destName = type => destinations.find(d => d.type === type)?.display_name || type;
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -128,31 +129,42 @@ function destinationStatus(dest) {
 // ── rendering ──────────────────────────────────────────────────────────────
 
 // The last 14 runs, oldest first: delivered, backed up but not delivered, failed.
+function runState(r) {
+  if (r.delivered) return ["y", "backed up and delivered"];
+  if (r.success) return ["p", "backed up, not delivered everywhere"];
+  return ["n", "failed"];
+}
+
 function historyStrip(svc) {
   const runs = (svc.last_result?.history || []).slice(-14);
-  const cells = Array(14 - runs.length).fill(`<i class="none"></i>`).concat(runs.map(r => {
-    const [cls, word] = r.delivered ? ["y", "backed up and delivered"]
-      : r.success ? ["p", "backed up, not delivered everywhere"] : ["n", "failed"];
+  const cells = new Array(14 - runs.length).fill(`<i class="none"></i>`).concat(runs.map(r => {
+    const [cls, word] = runState(r);
     return `<i class="${cls}" title="${esc(when(r.finished_at))}: ${word}"></i>`;
   }));
   return `<span class="history" aria-label="Last ${runs.length} runs">${cells.join("")}</span>`;
 }
 
-function serviceTile(svc) {
+function tileMeta(svc) {
+  if (!svc.enabled) return "Not backed up on schedule";
+  const missing = missingSettings(svc).length;
+  if (missing) return `${plural(missing, "setting")} missing`;
   const lr = svc.last_result;
-  const meta = !svc.enabled ? "Not backed up on schedule"
-    : missingSettings(svc).length ? `${plural(missingSettings(svc).length, "setting")} missing`
-      : lr ? [ago(lr.finished_at), lr.size_bytes ? size(lr.size_bytes) : ""].filter(Boolean).join(" · ")
-        : "Not backed up yet";
-  return `<button class="tile ${svc.enabled ? "" : "is-off"}" data-tile="${esc(`s:${svc.name}`)}" data-act="open" aria-haspopup="dialog">
+  if (!lr) return "Not backed up yet";
+  return [ago(lr.finished_at), lr.size_bytes ? size(lr.size_bytes) : ""].filter(Boolean).join(" · ");
+}
+
+function serviceTile(svc) {
+  return `<button class="tile ${svc.enabled ? "" : "is-off"}" data-tile="${tileKey("s", svc.name)}" data-act="open" aria-haspopup="dialog">
     <span class="tile-top">${logo(svc)}<span class="tile-name">${esc(svc.display_name)}</span>${statusTag(serviceStatus(svc))}</span>
     ${historyStrip(svc)}
-    <span class="tile-meta">${esc(meta)}</span>
+    <span class="tile-meta">${esc(tileMeta(svc))}</span>
   </button>`;
 }
 
 function field(id, ev) {
-  const state = ev.configured ? ["set", "saved"] : ev.required ? ["missing", "missing"] : ["", "optional"];
+  let state = ["", "optional"];
+  if (ev.configured) state = ["set", "saved"];
+  else if (ev.required) state = ["missing", "missing"];
   const placeholder = ev.secret && ev.configured ? "Saved. Leave blank to keep it." : "";
   return `<div class="field">
     <label for="${esc(id)}">${esc(ev.label)} <span class="state ${state[0]}">${state[1]}</span></label>
@@ -170,18 +182,28 @@ function fieldList(prefix, envVars) {
     (advanced ? `<details><summary>Advanced</summary><div class="fields">${advanced}</div></details>` : "");
 }
 
+function lastRunFacts(lr, miss) {
+  if (!lr) {
+    let hint = "";
+    if (miss.length) hint = ` Fill in ${miss.length === 1 ? "the missing setting" : "the missing settings"}, then run it once to check.`;
+    return `<p class="desc">No backup yet.${hint}</p>`;
+  }
+  const sizeRow = lr.size_bytes == null ? "" : `<dt>Size</dt><dd>${esc(size(lr.size_bytes))}</dd>`;
+  const delivered = Object.entries(lr.uploads || {}).map(([type, u]) =>
+    `<span class="${u.ok ? "y" : "n"}">${u.ok ? "✓" : "✗"} ${esc(destName(type))}</span>`).join("");
+  const deliveredRow = lr.uploads ? `<dt>Delivered to</dt><dd class="deliv">${delivered}</dd>` : "";
+  return `<dl class="facts">
+      <dt>Last backup</dt><dd>${esc(when(lr.finished_at))}</dd>
+      ${sizeRow}
+      <dt>Took</dt><dd>${Math.max(0, Math.round((new Date(lr.finished_at) - new Date(lr.started_at)) / 1000))} s</dd>
+      ${deliveredRow}
+    </dl>`;
+}
+
 function serviceBody(svc) {
-  const lr = svc.last_result;
   const miss = missingSettings(svc);
   const problem = serviceProblem(svc);
-  const facts = lr ? `<dl class="facts">
-      <dt>Last backup</dt><dd>${esc(when(lr.finished_at))}</dd>
-      ${lr.size_bytes != null ? `<dt>Size</dt><dd>${esc(size(lr.size_bytes))}</dd>` : ""}
-      <dt>Took</dt><dd>${Math.max(0, Math.round((new Date(lr.finished_at) - new Date(lr.started_at)) / 1000))} s</dd>
-      ${lr.uploads ? `<dt>Delivered to</dt><dd class="deliv">${Object.entries(lr.uploads).map(([type, u]) =>
-        `<span class="${u.ok ? "y" : "n"}">${u.ok ? "✓" : "✗"} ${esc(destName(type))}</span>`).join("")}</dd>` : ""}
-    </dl>`
-    : `<p class="desc">No backup yet.${miss.length ? ` Fill in ${miss.length === 1 ? "the missing setting" : "the missing settings"}, then run it once to check.` : ""}</p>`;
+  const facts = lastRunFacts(svc.last_result, miss);
   return `<div class="tile-body">
     <div>
       <p class="desc">${esc(svc.description)}</p>
@@ -211,11 +233,13 @@ function loginSection(dest) {
   if (!dest.login_provider) return "";
   const who = PROVIDERS[dest.login_provider];
   if (dest.login?.connected) {
-    return `<p class="connected">Connected${dest.login.account ? ` as ${esc(dest.login.account)}` : ""}.</p>
+    const account = dest.login.account ? ` as ${esc(dest.login.account)}` : "";
+    return `<p class="connected">Connected${account}.</p>
       <button class="btn" data-act="dst-logout">Disconnect</button>`;
   }
+  const noApp = dest.login_available ? "" : `<div class="hint">This build has no built-in ${who} app. Use your own under Advanced.</div>`;
   return `<button class="btn primary" data-act="dst-login" ${dest.login_available ? "" : "disabled"}>Log in with ${who}</button>
-    ${dest.login_available ? "" : `<div class="hint">This build has no built-in ${who} app. Use your own under Advanced.</div>`}`;
+    ${noApp}`;
 }
 
 function googleOwnClient(dest) {
@@ -258,6 +282,7 @@ function destinationBody(dest) {
   const failures = services
     .filter(s => s.enabled && s.last_result?.uploads?.[dest.type]?.ok === false)
     .map(s => `${s.display_name}: ${s.last_result.uploads[dest.type].message}`);
+  const fields = fieldList(`d-${dest.type}`, dest.env_vars);
   return `<div class="tile-body">
     <div>
       <p class="desc">${esc(dest.description)}</p>
@@ -265,7 +290,7 @@ function destinationBody(dest) {
       ${loginSection(dest)}
     </div>
     <div>
-      ${dest.env_vars.length ? `<h4>Settings</h4>${fieldList(`d-${dest.type}`, dest.env_vars)}` : ""}
+      ${dest.env_vars.length ? `<h4>Settings</h4>${fields}` : ""}
       ${dest.type === "sftp" ? sftpKey() : ""}
       ${dest.type === "google_drive" ? googleOwnClient(dest) : ""}
     </div>
@@ -291,9 +316,10 @@ function nextBackup() {
 function renderStatusBar() {
   const attention = services.filter(s => ["fail", "setup"].includes(serviceStatus(s)[0])).length +
     destinations.filter(d => ["fail", "setup"].includes(destinationStatus(d)[0])).length;
+  const verb = attention === 1 ? "needs" : "need";
   const parts = [
     plural(services.length, "app"),
-    attention ? `<span class="attn">${attention} need${attention === 1 ? "s" : ""} attention</span>` : "all good",
+    attention ? `<span class="attn">${attention} ${verb} attention</span>` : "all good",
   ];
   if (!destinations.some(d => d.enabled)) parts.push("backups stay on this server only");
   if (schedule) parts.push(`next backup ${esc(nextBackup())}`);
@@ -341,7 +367,7 @@ function render() {
     </div>`;
   const shown = destinations.filter(d => d.enabled);
   $("#dst-row").innerHTML = shown.map(dest =>
-    `<button class="chip" data-tile="${esc(`d:${dest.type}`)}" data-act="open" aria-haspopup="dialog">
+    `<button class="chip" data-tile="${tileKey("d", dest.type)}" data-act="open" aria-haspopup="dialog">
       ${logo(dest, 20)}<span>${esc(dest.display_name)}</span>${statusTag(destinationStatus(dest))}
     </button>`).join("") +
     `<button class="chip add" data-act="dest-picker">${shown.length ? "Add a destination" : "Add a destination to keep a copy off this server"}</button>`;
@@ -350,7 +376,7 @@ function render() {
 }
 
 function openDestinationPicker() {
-  $("#dest-list").innerHTML = destinations.map(d => `<button class="cat-item pick" data-goto="${esc(`d:${d.type}`)}">
+  $("#dest-list").innerHTML = destinations.map(d => `<button class="cat-item pick" data-goto="${tileKey("d", d.type)}">
       <span class="row">${logo(d)}<span class="tile-name">${esc(d.display_name)}</span>${d.enabled ? statusTag(destinationStatus(d)) : ""}</span>
       <p>${esc(d.description)}</p>
     </button>`).join("");
@@ -431,6 +457,12 @@ async function openCatalog() {
   $("#catalog").showModal();
 }
 
+function addedTag(count) {
+  if (!count) return "<span></span>";
+  const times = count > 1 ? ` (${count})` : "";
+  return `<span class="status ok">Added${times}</span>`;
+}
+
 function renderCatalog() {
   const q = $("#cat-q").value.trim().toLowerCase();
   const items = (openCatalog.items || []).filter(c => !q || `${c.display_name} ${c.description}`.toLowerCase().includes(q));
@@ -439,7 +471,7 @@ function renderCatalog() {
       <p>${esc(c.description)}</p>
       ${c.settings.length ? `<div class="needs">Needs: ${c.settings.map(esc).join(", ")}</div>` : ""}
       <div class="row foot">
-        ${c.added ? `<span class="status ok">Added${c.added > 1 ? ` (${c.added})` : ""}</span>` : "<span></span>"}
+        ${addedTag(c.added)}
         <button class="btn" data-add="${esc(c.type)}">${c.added ? "Add another" : "Add"}</button>
       </div>
     </div>`).join("") || `<p class="muted">No app matches “${esc(q)}”.</p>`;
@@ -528,7 +560,8 @@ async function startLogin(dest, tile) {
       const s = await api(`/api/destinations/logins/${login.id}`);
       if (s.status === "connected") {
         $("#login-modal").close();
-        toast(`${dest.display_name} connected${s.message ? ` as ${s.message}` : ""}`);
+        const account = s.message ? ` as ${s.message}` : "";
+        toast(`${dest.display_name} connected${account}`);
         void refresh();
       } else if (s.status === "failed") {
         clearInterval(loginPoll);
@@ -627,9 +660,9 @@ async function saveSchedule(e) {
   e.preventDefault();
   const body = {
     daily_at: $("#setting-daily-at").value,
-    interval_hours: parseInt($("#setting-interval-hours").value, 10) || 0,
-    keep_days: parseInt($("#setting-keep-days").value, 10),
-    remote_keep_count: parseInt($("#setting-remote-keep-count").value, 10),
+    interval_hours: Number.parseInt($("#setting-interval-hours").value, 10) || 0,
+    keep_days: Number.parseInt($("#setting-keep-days").value, 10),
+    remote_keep_count: Number.parseInt($("#setting-remote-keep-count").value, 10),
     run_on_start: $("#setting-run-on-start").checked,
   };
   await api("/api/settings", sendJson("PUT", body));
@@ -692,11 +725,9 @@ function showAuthScreen() {
   $("#app").hidden = true;
   $("#top-nav").hidden = true;
   $("#auth-heading").textContent = setup ? "Create the admin password" : "Sign in";
-  $("#auth-intro").textContent = proxy
-    ? "This app expects your sign-in proxy (Authelia, Authentik…) to log you in. Open it through the proxy."
-    : setup
-      ? "You need the one-time setup code from the server logs."
-      : "Enter the admin password.";
+  let intro = setup ? "You need the one-time setup code from the server logs." : "Enter the admin password.";
+  if (proxy) intro = "This app expects your sign-in proxy (Authelia, Authentik…) to log you in. Open it through the proxy.";
+  $("#auth-intro").textContent = intro;
   $("#setup-code-field").hidden = !setup;
   $("#auth-confirm-field").hidden = !setup;
   $("#auth-password-field").hidden = proxy;

@@ -66,7 +66,7 @@
   <dialog id="detail" aria-labelledby="detail-name">
     <div class="d-head">
       <img id="detail-icon" class="logo" alt="" width="32" height="32" />
-      <h3 id="detail-name"></h3>
+      <h3 id="detail-name">Details</h3>
       <span id="detail-badge"></span>
       <div class="spacer"></div>
       <button class="btn quiet" data-close aria-label="Close">Close</button>
@@ -76,7 +76,7 @@
 
   <dialog id="confirm">
     <form method="dialog" class="d-in">
-      <h3 id="c-title"></h3>
+      <h3 id="c-title">Are you sure?</h3>
       <p id="c-text" class="muted"></p>
       <code id="c-code" class="code-block" hidden></code>
       <div class="d-actions">
@@ -113,7 +113,7 @@
       <div id="login-code" class="login-code"></div>
       <div class="d-actions">
         <button class="btn" id="copy-code">Copy code</button>
-        <a id="login-link" class="btn primary" target="_blank" rel="noopener noreferrer"></a>
+        <a id="login-link" class="btn primary" target="_blank" rel="noopener noreferrer">Open the sign-in page</a>
       </div>
       <p id="login-status" class="small"></p>
       <div class="d-actions"><button class="btn quiet" data-close>Cancel</button></div>
@@ -193,6 +193,6 @@
     </div>
   </dialog>
 
-  <div class="toast" id="toast" role="status" hidden></div>
+  <output class="toast" id="toast" hidden></output>
 </body>
 </html>
