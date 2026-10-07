@@ -95,8 +95,10 @@ def test_no_bars_is_a_clear_error(tmp_path: Path, bars_body: object) -> None:
     with patch(
         "requests.Session.request", side_effect=lambda method, url, **kw: _resp(url, bars_body)
     ):
+        worker = _worker()
+        ctx = _ctx(tmp_path, ENV)
         with pytest.raises(BackupError, match="No bars found"):
-            _worker().run(_ctx(tmp_path, ENV))
+            worker.run(ctx)
 
 
 @pytest.mark.parametrize(
@@ -112,20 +114,26 @@ def test_bars_request_errors(tmp_path: Path, response: dict, message: str) -> No
         "requests.Session.request",
         side_effect=lambda method, url, **kw: _resp(url, {}, **response),
     ):
+        worker = _worker()
+        ctx = _ctx(tmp_path, ENV)
         with pytest.raises(BackupError, match=message):
-            _worker().run(_ctx(tmp_path, ENV))
+            worker.run(ctx)
 
 
 def test_unreachable_server(tmp_path: Path) -> None:
     with patch("requests.Session.request", side_effect=requests.ConnectionError("refused")):
+        worker = _worker()
+        ctx = _ctx(tmp_path, ENV)
         with pytest.raises(BackupError, match="Failed to fetch bars: refused"):
-            _worker().run(_ctx(tmp_path, ENV))
+            worker.run(ctx)
 
 
 @pytest.mark.parametrize("missing", ["BAR_ASSISTANT_URL", "BAR_ASSISTANT_API_KEY"])
 def test_missing_setting(tmp_path: Path, missing: str) -> None:
+    worker = _worker()
+    ctx = _ctx(tmp_path, {**ENV, missing: ""})
     with pytest.raises(BackupError, match=f"{missing} is not set"):
-        _worker().run(_ctx(tmp_path, {**ENV, missing: ""}))
+        worker.run(ctx)
 
 
 def test_follows_every_page(tmp_path: Path) -> None:
