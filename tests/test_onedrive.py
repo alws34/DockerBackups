@@ -47,9 +47,8 @@ def test_large_upload_is_chunked_and_upload_url_gets_no_token(
     ):
         OneDriveDestination(env).put(src, "wikijs")
     method, url = graph.call_args.args
-    assert method == "POST" and url.endswith(
-        ":/wikijs/wikijs_20261001_033000.tar.gz:/createUploadSession"
-    )
+    assert method == "POST"
+    assert url.endswith(":/wikijs/wikijs_20261001_033000.tar.gz:/createUploadSession")
     assert graph.call_args.kwargs["headers"]["Authorization"] == "Bearer AT"
     ranges = [c.kwargs["headers"] for c in put.call_args_list]
     assert ranges == [
@@ -72,14 +71,16 @@ def test_failed_chunk_and_empty_file(env, msal_app, tmp_path: Path):
         patch.object(onedrive.requests, "request", return_value=session),
         patch.object(onedrive.requests, "put", return_value=_resp(507)),
     ):
+        dest = OneDriveDestination(env)
         with pytest.raises(BackupError, match="upload failed 507"):
-            OneDriveDestination(env).put(src, "n8n")
+            dest.put(src, "n8n")
 
     src.write_bytes(b"")
     with patch.object(onedrive.requests, "request", return_value=_resp(201)) as graph:
         OneDriveDestination(env).put(src, "n8n")
     method, url = graph.call_args.args
-    assert method == "PUT" and url.endswith(":/n8n/n8n_20261001_000000.json:/content")
+    assert method == "PUT"
+    assert url.endswith(":/n8n/n8n_20261001_000000.json:/content")
 
 
 def test_ship_pages_listing_and_prunes_only_own_files(env, msal_app, tmp_path: Path):
@@ -105,7 +106,8 @@ def test_ship_pages_listing_and_prunes_only_own_files(env, msal_app, tmp_path: P
     assert pruned == ["n8n_20261001_000000.json"]
     assert graph.call_args_list[2].args[1] == "https://graph/next"
     method, url = graph.call_args_list[-1].args
-    assert method == "DELETE" and url.endswith(":/n8n/n8n_20261001_000000.json:")
+    assert method == "DELETE"
+    assert url.endswith(":/n8n/n8n_20261001_000000.json:")
 
 
 def test_missing_folder_lists_empty_and_names_are_quoted(env, msal_app):
@@ -129,11 +131,13 @@ def test_graph_errors_become_backup_errors(env, msal_app):
 
 def test_expired_login(env, msal_app):
     msal_app.acquire_token_silent.return_value = {"error": "invalid_grant"}
+    dest = OneDriveDestination(env)
     with pytest.raises(BackupError, match="expired or was revoked"):
-        OneDriveDestination(env)._token()
+        dest._token()
     msal_app.get_accounts.return_value = []
+    dest = OneDriveDestination(env)
     with pytest.raises(BackupError, match="expired or was revoked"):
-        OneDriveDestination(env)._token()
+        dest._token()
 
 
 def test_login_status_and_from_env(env, msal_app, tmp_path: Path):
@@ -171,8 +175,9 @@ def test_device_login(env, msal_app, tmp_path: Path):
     assert (tmp_path / "destinations" / "onedrive-token-cache.json").is_file()
 
     msal_app.acquire_token_by_device_flow.return_value = {"error_description": "declined"}
+    declined = OneDriveDestination.start_login(env)
     with pytest.raises(BackupError, match="declined"):
-        OneDriveDestination.start_login(env).wait()
+        declined.wait()
 
 
 def test_no_client_id_means_no_login(tmp_path: Path, monkeypatch):

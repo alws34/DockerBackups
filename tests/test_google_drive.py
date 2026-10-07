@@ -145,11 +145,12 @@ def test_remove_looks_up_ids_when_not_listed_yet():
 
 def test_expired_login_and_api_errors_become_backup_errors():
     dest = _dest(FakeDrive())
+    expired = _Request(RefreshError("invalid_grant"))
     with pytest.raises(BackupError, match="expired or was revoked"):
-        dest._call(_Request(RefreshError("invalid_grant")))
-    resp = MagicMock(status=403, reason="Forbidden")
+        dest._call(expired)
+    forbidden = _Request(HttpError(MagicMock(status=403, reason="Forbidden"), b"{}"))
     with pytest.raises(BackupError, match="Google Drive error: Forbidden"):
-        dest._call(_Request(HttpError(resp, b"{}")))
+        dest._call(forbidden)
 
 
 def test_check_reports_account_and_prepares_root():
@@ -171,7 +172,8 @@ def test_drive_client_built_from_stored_refresh_token():
         assert dest._drive() == "svc"
     build.assert_called_once()
     creds = build.call_args.kwargs["credentials"]
-    assert creds.refresh_token == "rt" and creds.client_id == "cid"
+    assert creds.refresh_token == "rt"
+    assert creds.client_id == "cid"
     assert creds.scopes == ["https://www.googleapis.com/auth/drive.file"]
 
 
@@ -186,7 +188,8 @@ def test_from_env_requires_a_readable_login(tmp_path: Path, monkeypatch):
     assert GoogleDriveDestination.login_status({}) == {"connected": True, "account": ""}
     tokens.write_text(json.dumps({"refresh_token": "rt", "client_id": "cid"}))
     dest = GoogleDriveDestination.from_env({"GOOGLE_DRIVE_FOLDER_ID": " abc "})
-    assert dest.folder_id == "abc" and dest.token_data["refresh_token"] == "rt"
+    assert dest.folder_id == "abc"
+    assert dest.token_data["refresh_token"] == "rt"
 
 
 def test_disconnect_deletes_tokens_even_if_revoke_fails(tmp_path: Path, monkeypatch):
