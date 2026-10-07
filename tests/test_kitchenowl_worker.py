@@ -93,11 +93,15 @@ def test_rejected_token_fails_the_backup(tmp_path: Path) -> None:
         "requests.Session.request",
         side_effect=lambda method, url, **kw: _resp(url, {"msg": "Unauthorized"}, status=401),
     ):
+        worker = _worker()
+        ctx = _ctx(tmp_path, ENV)
         with pytest.raises(BackupError, match="Failed to fetch households: 401"):
-            _worker().run(_ctx(tmp_path, ENV))
+            worker.run(ctx)
 
 
 @pytest.mark.parametrize("missing", ["KITCHENOWL_URL", "KITCHENOWL_TOKEN"])
 def test_missing_setting(tmp_path: Path, missing: str) -> None:
+    worker = _worker()
+    ctx = _ctx(tmp_path, {**ENV, missing: ""})
     with pytest.raises(BackupError, match=f"{missing} is not set"):
-        _worker().run(_ctx(tmp_path, {**ENV, missing: ""}))
+        worker.run(ctx)

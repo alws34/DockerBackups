@@ -35,8 +35,9 @@ def _resp(url: str, data: object, status: int = 200) -> requests.Response:
 def test_all_endpoints_unreachable_raises(tmp_path: Path) -> None:
     worker = SnipeItWorker({"name": "snipeit", "type": "snipeit", "options": {}})
     with patch("app.workers.snipeit.requests.get", side_effect=requests.ConnectionError("dead")):
+        ctx = _ctx(tmp_path)
         with pytest.raises(BackupError, match="All Snipe-IT endpoints failed"):
-            worker.run(_ctx(tmp_path))
+            worker.run(ctx)
 
 
 def test_pages_through_endpoints_and_skips_forbidden_ones(
@@ -80,5 +81,7 @@ def test_rejected_api_key_stops_the_backup(tmp_path: Path) -> None:
         "requests.Session.request",
         side_effect=lambda method, url, **kw: _resp(url, {"status": "error"}, status=401),
     ):
+        worker = SnipeItWorker({"name": "snipeit", "type": "snipeit"})
+        ctx = _ctx(tmp_path)
         with pytest.raises(BackupError, match="SNIPEIT_API_KEY is invalid or expired"):
-            SnipeItWorker({"name": "snipeit", "type": "snipeit"}).run(_ctx(tmp_path))
+            worker.run(ctx)
