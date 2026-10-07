@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.auth import AuthManager
 from app.api.routes import auth as auth_routes
-from app.api.routes import destinations, env_vars, logs, services, settings
+from app.api.routes import destinations, env_vars, services, settings
 from app.api.security import install_security_guards, parse_allowed_hosts
 from app.core.env_manager import EnvManager
 from app.core.registry import WorkerRegistry
@@ -42,7 +42,6 @@ def create_app(
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     app.include_router(services.create_router(scheduler, registry, env_manager), prefix="/api")
-    app.include_router(logs.create_router(), prefix="/api")
     app.include_router(auth_routes.create_router(auth), prefix="/api")
     app.include_router(env_vars.create_router(env_manager, registry), prefix="/api")
     app.include_router(destinations.create_router(env_manager, scheduler), prefix="/api")
