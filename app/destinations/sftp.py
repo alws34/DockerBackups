@@ -140,7 +140,7 @@ class SftpDestination(BackupDestination):
                     "trust the new key; otherwise someone may be intercepting the connection."
                 )
             if self.key_file:
-                pkey = paramiko.PKey.from_path(self.key_file, password=self.password or None)
+                pkey = load_private_key(self.key_file, self.password)
                 transport.auth_publickey(self.username, pkey)
             else:
                 transport.auth_password(self.username, self.password)
@@ -213,11 +213,27 @@ def save_private_key(env: dict[str, str], key_text: str, dest_dir: Path) -> Path
     path = dest_dir / "sftp_id"
     write_private(path, text)
     try:
-        paramiko.PKey.from_path(str(path), password=env.get(PASSWORD_ENV) or None)
-    except paramiko.PasswordRequiredException as e:
+        load_private_key(str(path), env.get(PASSWORD_ENV, ""))
+    except BackupError:
         path.unlink(missing_ok=True)
-        raise BackupError("The key is encrypted: save its passphrase as the password first.") from e
-    except (paramiko.SSHException, ValueError) as e:
-        path.unlink(missing_ok=True)
-        raise BackupError(f"Could not read the key: {e}") from e
+        raise
     return path
+
+
+def load_private_key(path: str, password: str) -> paramiko.PKey:
+    """Load a private key; the SFTP password doubles as its passphrase if it has one."""
+    # The password is also used for password login, so only hand it over when the key
+    # asks for one: cryptography (under paramiko 5) rejects a passphrase for a plain key.
+    try:
+        return paramiko.PKey.from_path(path)
+    except TypeError:  # the key is encrypted
+        if not password:
+            raise BackupError(
+                "The key is encrypted: save its passphrase as the password first."
+            ) from None
+    except (paramiko.SSHException, ValueError) as e:
+        raise BackupError(f"Could not read the key: {e}") from e
+    try:
+        return paramiko.PKey.from_path(path, password=password.encode())
+    except (paramiko.SSHException, ValueError) as e:
+        raise BackupError("Could not unlock the key: the password isn't its passphrase.") from e

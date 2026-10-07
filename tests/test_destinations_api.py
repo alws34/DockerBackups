@@ -250,16 +250,22 @@ async def test_sftp_key_upload(app, env: Path):
     assert f'SFTP_KEY_FILE="{key_path}"' in (env / ".env").read_text()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=TypeError,
-    reason="BUG: sftp.py hands paramiko 5 a str passphrase; cryptography needs bytes",
+@pytest.mark.parametrize(
+    ("password", "passphrase", "expected"),
+    [
+        ("hunter2", b"hunter2", 200),  # encrypted key, password is its passphrase
+        ("hunter2", None, 200),  # plain key next to a password used for password login
+        ("", b"hunter2", 400),  # encrypted key, no passphrase saved
+        ("wrong", b"hunter2", 400),  # wrong passphrase
+    ],
 )
-async def test_sftp_key_upload_with_passphrase(app, env: Path):
-    (env / ".env").write_text("SFTP_PASSWORD=hunter2\n")
-    key = {"key": _openssh_key(b"hunter2")}
-    status, _, _ = await call(app, "POST", "/api/destinations/sftp/key", key)
-    assert status == 200
+async def test_sftp_key_upload_passphrase(app, env: Path, password, passphrase, expected):
+    (env / ".env").write_text(f"SFTP_PASSWORD={password}\n")
+    status, _, _ = await call(
+        app, "POST", "/api/destinations/sftp/key", {"key": _openssh_key(passphrase)}
+    )
+    assert status == expected
+    assert (env / "state" / "destinations" / "sftp_id").exists() is (expected == 200)
 
 
 # ── Google: bring-your-own OAuth client ──────────────────────────────────────
