@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import tarfile
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -59,20 +58,11 @@ class KitchenOwlWorker(BackupWorker):
 
         headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
 
-        def get(path: str) -> dict | list:
-            resp = requests.get(f"{base_url}{path}", headers=headers, timeout=60)
-            resp.raise_for_status()
-            return resp.json()
-
-        backup_dir = self.service_backup_dir(context)
-        backup_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = started_at.strftime("%Y%m%d_%H%M%S")
-
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
 
             try:
-                households = get("/api/household")
+                households = _get(base_url, headers, "/api/household")
             except requests.RequestException as e:
                 raise BackupError(f"Failed to fetch households: {e}") from e
 
@@ -82,60 +72,35 @@ class KitchenOwlWorker(BackupWorker):
             (work / "households.json").write_text(
                 json.dumps(households, indent=2, ensure_ascii=False)
             )
-
             for hh in households:
-                hh_id = hh.get("household", {}).get("id") or hh.get("id")
-                if not hh_id:
-                    continue
-                hh_dir = work / f"household_{hh_id}"
-                hh_dir.mkdir()
+                _export_household(base_url, headers, hh, work)
+            return self.archive_dir(context, started_at, work, "API export")
 
-                # Recipes
-                try:
-                    recipes = get(f"/api/household/{hh_id}/recipe")
-                    (hh_dir / "recipes.json").write_text(
-                        json.dumps(recipes, indent=2, ensure_ascii=False)
-                    )
-                    count = len(recipes) if isinstance(recipes, list) else "?"
-                    logger.info(f"kitchenowl: household {hh_id}: {count} recipes")
-                except requests.RequestException as e:
-                    logger.warning(
-                        f"kitchenowl: could not fetch recipes for household {hh_id}: {e}"
-                    )
 
-                # Items / ingredients catalogue
-                try:
-                    items = get(f"/api/household/{hh_id}/item")
-                    (hh_dir / "items.json").write_text(
-                        json.dumps(items, indent=2, ensure_ascii=False)
-                    )
-                except requests.RequestException as e:
-                    logger.warning(f"kitchenowl: could not fetch items for household {hh_id}: {e}")
+# File name -> endpoint under /api/household/<id>/
+_SECTIONS = {"recipes": "recipe", "items": "item", "shoppinglists": "shoppinglist"}
 
-                # Shopping lists
-                try:
-                    shopping = get(f"/api/household/{hh_id}/shoppinglist")
-                    (hh_dir / "shoppinglists.json").write_text(
-                        json.dumps(shopping, indent=2, ensure_ascii=False)
-                    )
-                except requests.RequestException as e:
-                    logger.warning(
-                        f"kitchenowl: could not fetch shoppinglists for household {hh_id}: {e}"
-                    )
 
-            archive = backup_dir / f"{self.service_name}_{timestamp}.tar.gz"
-            with tarfile.open(archive, "w:gz") as tar:
-                tar.add(work, arcname=f"{self.service_name}_{timestamp}")
+def _get(base_url: str, headers: dict, path: str) -> dict | list:
+    resp = requests.get(f"{base_url}{path}", headers=headers, timeout=60)
+    resp.raise_for_status()
+    return resp.json()
 
-        archive.chmod(0o600)
-        self.cleanup_old_files(backup_dir, f"{self.service_name}_*.tar.gz", context.retention_days)
 
-        return BackupResult(
-            service_name=self.service_name,
-            worker_type=self.worker_type,
-            success=True,
-            message=f"API export: {archive.name} ({archive.stat().st_size} bytes)",
-            output_files=[archive],
-            started_at=started_at,
-            finished_at=datetime.now(),
-        )
+def _export_household(base_url: str, headers: dict, hh: dict, work: Path) -> None:
+    """Write one household's recipes, items and shopping lists into ``household_<id>/``."""
+    hh_id = hh.get("household", {}).get("id") or hh.get("id")
+    if not hh_id:
+        return
+    hh_dir = work / f"household_{hh_id}"
+    hh_dir.mkdir()
+    for name, endpoint in _SECTIONS.items():
+        try:
+            data = _get(base_url, headers, f"/api/household/{hh_id}/{endpoint}")
+        except requests.RequestException as e:
+            logger.warning(f"kitchenowl: could not fetch {name} for household {hh_id}: {e}")
+            continue
+        (hh_dir / f"{name}.json").write_text(json.dumps(data, indent=2, ensure_ascii=False))
+        if name == "recipes":
+            count = len(data) if isinstance(data, list) else "?"
+            logger.info(f"kitchenowl: household {hh_id}: {count} recipes")

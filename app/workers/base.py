@@ -121,27 +121,31 @@ class BackupWorker(ABC):
         self, context: BackupContext, started_at: datetime, files: dict[str, object]
     ) -> BackupResult:
         """Write ``{name: data}`` as JSON files into one tar.gz and apply retention."""
-        backup_dir = self.service_backup_dir(context)
-        backup_dir.mkdir(parents=True, exist_ok=True)
-        stem = f"{self.service_name}_{started_at.strftime('%Y%m%d_%H%M%S')}"
-        archive = backup_dir / f"{stem}.tar.gz"
-
+        counts = ", ".join(f"{len(v)} {k}" for k, v in files.items() if isinstance(v, list))
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             for name, data in files.items():
                 (work / f"{name}.json").write_text(json.dumps(data, indent=2, ensure_ascii=False))
-            with tarfile.open(archive, "w:gz") as tar:
-                tar.add(work, arcname=stem)
+            return self.archive_dir(context, started_at, work, counts or "exported")
 
+    def archive_dir(
+        self, context: BackupContext, started_at: datetime, work: Path, summary: str
+    ) -> BackupResult:
+        """Pack ``work`` into one tar.gz (mode 600), apply retention and report ``summary``."""
+        backup_dir = self.service_backup_dir(context)
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        stem = f"{self.service_name}_{started_at.strftime('%Y%m%d_%H%M%S')}"
+        archive = backup_dir / f"{stem}.tar.gz"
+        with tarfile.open(archive, "w:gz") as tar:
+            tar.add(work, arcname=stem)
         archive.chmod(0o600)
         self.cleanup_old_files(backup_dir, f"{self.service_name}_*.tar.gz", context.retention_days)
 
-        counts = ", ".join(f"{len(v)} {k}" for k, v in files.items() if isinstance(v, list))
         return BackupResult(
             service_name=self.service_name,
             worker_type=self.worker_type,
             success=True,
-            message=f"{counts or 'exported'}: {archive.name} ({archive.stat().st_size} bytes)",
+            message=f"{summary}: {archive.name} ({archive.stat().st_size} bytes)",
             output_files=[archive],
             started_at=started_at,
             finished_at=datetime.now(),

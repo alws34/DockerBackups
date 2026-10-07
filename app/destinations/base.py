@@ -96,7 +96,7 @@ class BackupDestination(ABC):
     def check(self) -> str:
         """Verify settings and credentials; return a short human-readable status."""
 
-    def close(self) -> None:  # noqa: B027 - optional hook, most destinations hold no connection
+    def close(self) -> None:  # noqa: B027 - optional hook as most destinations hold no connection
         """Release any open connection."""
 
     def ship(self, file_path: Path, service_name: str, keep_count: int) -> list[str]:

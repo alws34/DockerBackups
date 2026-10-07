@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import tarfile
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -79,80 +78,64 @@ class BarAssistantWorker(BackupWorker):
             "Accept": "application/json",
         }
 
-        def get(
-            path: str,
-            params: dict | None = None,
-            extra_headers: dict | None = None,
-        ) -> dict | list:
-            url = f"{base_url}/api/{path}"
-            h = {**headers, **(extra_headers or {})}
-            resp = requests.get(url, headers=h, params=params or {}, timeout=60)
-            if resp.status_code == 401:
-                raise BackupError("BAR_ASSISTANT_API_KEY is invalid or expired (401)")
-            resp.raise_for_status()
-            try:
-                return resp.json()
-            except ValueError as e:
-                raise BackupError(
-                    f"Non-JSON response from {url} (status {resp.status_code}): {resp.text[:300]!r}"
-                ) from e
-
         # Fetch bars to get bar ID(s)
         try:
-            bars_resp = get("bars")
+            bars_resp = _get(base_url, headers, "bars")
         except requests.RequestException as e:
             raise BackupError(f"Failed to fetch bars: {e}") from e
 
-        bars = bars_resp.get("data", bars_resp) if isinstance(bars_resp, dict) else bars_resp
+        bars = _unwrap(bars_resp)
         if not bars:
             raise BackupError("No bars found — cannot determine bar_id")
 
-        backup_dir = self.service_backup_dir(context)
-        backup_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = started_at.strftime("%Y%m%d_%H%M%S")
-        total_records = 0
-
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
-
-            # Save bars metadata
             (work / "bars.json").write_text(json.dumps(bars, indent=2, ensure_ascii=False))
+            total_records = sum(_export_bar(base_url, headers, bar, work) for bar in bars)
+            return self.archive_dir(context, started_at, work, f"{total_records} records exported")
 
-            for bar in bars:
-                bar_id = bar.get("id")
-                bar_slug = bar.get("slug") or str(bar_id)
-                bar_dir = work / f"bar_{bar_slug}"
-                bar_dir.mkdir()
-                logger.info(f"bar_assistant: exporting bar {bar_slug!r} (id={bar_id})")
 
-                bar_headers = {**headers, "Bar-Assistant-Bar-Id": str(bar_id)}
-                for endpoint in _BAR_ENDPOINTS:
-                    try:
-                        data = get(endpoint, params={"per_page": 1000}, extra_headers=bar_headers)
-                        records = data.get("data", data) if isinstance(data, dict) else data
-                        out = bar_dir / f"{endpoint.replace('-', '_')}.json"
-                        out.write_text(json.dumps(records, indent=2, ensure_ascii=False))
-                        count = len(records) if isinstance(records, list) else "?"
-                        total_records += count if isinstance(count, int) else 0
-                        logger.info(f"bar_assistant: {endpoint}: {count} records")
-                    except requests.RequestException as e:
-                        logger.warning(f"bar_assistant: skipping {endpoint}: {e}")
+def _get(base_url: str, headers: dict, path: str, params: dict | None = None) -> dict | list:
+    url = f"{base_url}/api/{path}"
+    resp = requests.get(url, headers=headers, params=params or {}, timeout=60)
+    if resp.status_code == 401:
+        raise BackupError("BAR_ASSISTANT_API_KEY is invalid or expired (401)")
+    resp.raise_for_status()
+    try:
+        return resp.json()
+    except ValueError as e:
+        raise BackupError(
+            f"Non-JSON response from {url} (status {resp.status_code}): {resp.text[:300]!r}"
+        ) from e
 
-            archive = backup_dir / f"{self.service_name}_{timestamp}.tar.gz"
-            with tarfile.open(archive, "w:gz") as tar:
-                tar.add(work, arcname=f"{self.service_name}_{timestamp}")
 
-        archive.chmod(0o600)
-        self.cleanup_old_files(backup_dir, f"{self.service_name}_*.tar.gz", context.retention_days)
+def _unwrap(body: dict | list) -> object:
+    """Bar Assistant wraps lists as ``{"data": [...]}``; return the payload."""
+    return body.get("data", body) if isinstance(body, dict) else body
 
-        return BackupResult(
-            service_name=self.service_name,
-            worker_type=self.worker_type,
-            success=True,
-            message=(
-                f"{total_records} records exported: {archive.name} ({archive.stat().st_size} bytes)"
-            ),
-            output_files=[archive],
-            started_at=started_at,
-            finished_at=datetime.now(),
-        )
+
+def _export_bar(base_url: str, headers: dict, bar: dict, work: Path) -> int:
+    """Export one bar into ``bar_<slug>/``; return how many records were written."""
+    bar_id = bar.get("id")
+    bar_slug = bar.get("slug") or str(bar_id)
+    bar_dir = work / f"bar_{bar_slug}"
+    bar_dir.mkdir()
+    logger.info(f"bar_assistant: exporting bar {bar_slug!r} (id={bar_id})")
+    bar_headers = {**headers, "Bar-Assistant-Bar-Id": str(bar_id)}
+    return sum(_export_endpoint(base_url, bar_headers, ep, bar_dir) for ep in _BAR_ENDPOINTS)
+
+
+def _export_endpoint(base_url: str, headers: dict, endpoint: str, bar_dir: Path) -> int:
+    """Write one endpoint of a bar to JSON; return its record count (0 if skipped)."""
+    try:
+        records = _unwrap(_get(base_url, headers, endpoint, params={"per_page": 1000}))
+    except requests.RequestException as e:
+        logger.warning(f"bar_assistant: skipping {endpoint}: {e}")
+        return 0
+    out = bar_dir / f"{endpoint.replace('-', '_')}.json"
+    out.write_text(json.dumps(records, indent=2, ensure_ascii=False))
+    if not isinstance(records, list):
+        logger.info(f"bar_assistant: {endpoint}: ? records")
+        return 0
+    logger.info(f"bar_assistant: {endpoint}: {len(records)} records")
+    return len(records)
