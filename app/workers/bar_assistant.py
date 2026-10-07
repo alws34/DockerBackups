@@ -125,10 +125,22 @@ def _export_bar(base_url: str, headers: dict, bar: dict, work: Path) -> int:
     return sum(_export_endpoint(base_url, bar_headers, ep, bar_dir) for ep in _BAR_ENDPOINTS)
 
 
+def _fetch_all(base_url: str, headers: dict, endpoint: str) -> object:
+    """Fetch every page of an endpoint (Laravel ``meta.last_page``) into one list."""
+    body = _get(base_url, headers, endpoint, params={"per_page": 1000})
+    records = _unwrap(body)
+    last = body.get("meta", {}).get("last_page", 1) if isinstance(body, dict) else 1
+    for page in range(2, int(last) + 1):
+        records += _unwrap(
+            _get(base_url, headers, endpoint, params={"per_page": 1000, "page": page})
+        )
+    return records
+
+
 def _export_endpoint(base_url: str, headers: dict, endpoint: str, bar_dir: Path) -> int:
     """Write one endpoint of a bar to JSON; return its record count (0 if skipped)."""
     try:
-        records = _unwrap(_get(base_url, headers, endpoint, params={"per_page": 1000}))
+        records = _fetch_all(base_url, headers, endpoint)
     except requests.RequestException as e:
         logger.warning(f"bar_assistant: skipping {endpoint}: {e}")
         return 0
