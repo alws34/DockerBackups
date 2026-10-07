@@ -7,7 +7,7 @@ import logging
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import ClassVar
 
 import requests
 
@@ -109,7 +109,7 @@ def _get(base_url: str, headers: dict, path: str, params: dict | None = None) ->
         ) from e
 
 
-def _unwrap(body: dict | list) -> Any:
+def _unwrap(body: dict | list) -> list | dict:
     """Bar Assistant wraps lists as ``{"data": [...]}``; return the payload."""
     return body.get("data", body) if isinstance(body, dict) else body
 
@@ -125,7 +125,7 @@ def _export_bar(base_url: str, headers: dict, bar: dict, work: Path) -> int:
     return sum(_export_endpoint(base_url, bar_headers, ep, bar_dir) for ep in _BAR_ENDPOINTS)
 
 
-def _fetch_all(base_url: str, headers: dict, endpoint: str) -> Any:
+def _fetch_all(base_url: str, headers: dict, endpoint: str) -> list | dict:
     """Fetch every page of an endpoint (Laravel ``meta.last_page``) into one list."""
     body = _get(base_url, headers, endpoint, params={"per_page": 1000})
     records = _unwrap(body)
