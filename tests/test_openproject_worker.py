@@ -92,8 +92,10 @@ def test_bad_token_gives_actionable_error(tmp_path: Path) -> None:
     resp.raise_for_status.side_effect = requests.HTTPError("401 Client Error: Unauthorized")
 
     with patch("requests.Session.request", return_value=resp):
+        worker = OpenProjectWorker({"name": "openproject", "type": "openproject"})
+        ctx = _ctx(tmp_path)
         with pytest.raises(BackupError, match="OPENPROJECT_API_TOKEN"):
-            OpenProjectWorker({"name": "openproject", "type": "openproject"}).run(_ctx(tmp_path))
+            worker.run(ctx)
 
 
 def test_sections_the_token_cannot_see_are_skipped(tmp_path: Path) -> None:
@@ -110,5 +112,6 @@ def test_sections_the_token_cannot_see_are_skipped(tmp_path: Path) -> None:
             _ctx(tmp_path)
         )
     files = _archive(result)
-    assert files["time_entries"] == [] and files["queries"] == []
+    assert files["time_entries"] == []
+    assert files["queries"] == []
     assert set(files["skipped"]) == {"time_entries", "queries"}

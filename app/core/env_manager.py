@@ -6,6 +6,14 @@ from pathlib import Path
 from threading import Lock
 
 
+def _key_of(line: str) -> str | None:
+    """The key a ``KEY=value`` line sets, or None for blanks, comments and other lines."""
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#") or "=" not in stripped:
+        return None
+    return stripped.partition("=")[0].strip()
+
+
 class EnvManager:
     """Read and update a ``.env`` file while preserving comments and layout."""
 
@@ -43,17 +51,12 @@ class EnvManager:
             updated_keys: set[str] = set()
             new_lines: list[str] = []
             for line in existing_lines:
-                stripped = line.strip()
-                if not stripped or stripped.startswith("#"):
+                key = _key_of(line)
+                if key in updates:
+                    new_lines.append(f'{key}="{updates[key]}"')
+                    updated_keys.add(key)
+                else:
                     new_lines.append(line)
-                    continue
-                if "=" in stripped:
-                    key = stripped.partition("=")[0].strip()
-                    if key in updates:
-                        new_lines.append(f'{key}="{updates[key]}"')
-                        updated_keys.add(key)
-                        continue
-                new_lines.append(line)
             for key, value in updates.items():
                 if key not in updated_keys:
                     new_lines.append(f'{key}="{value}"')

@@ -21,6 +21,10 @@ _PUBLIC_API = {
     "/api/destinations/google_drive/oauth/callback",
 }
 
+_BAD_REQUEST = {400: {"description": "Invalid password or settings"}}
+_TOO_MANY = {429: {"description": "Too many failed attempts"}}
+_WRONG_CURRENT = {403: {"description": "Current password is wrong"}}
+
 
 class LoginBody(BaseModel):
     """Request body for logging in."""
@@ -112,7 +116,15 @@ def create_router(auth: AuthManager) -> APIRouter:
             "proxy_header": auth.proxy_header,
         }
 
-    @router.post("/auth/setup")
+    @router.post(
+        "/auth/setup",
+        responses={
+            **_BAD_REQUEST,
+            **_TOO_MANY,
+            403: {"description": "Wrong setup code"},
+            409: {"description": "An admin password already exists"},
+        },
+    )
     async def setup(body: SetupBody, request: Request, response: Response) -> dict:
         """Create the admin password; requires the setup code from the server logs."""
         client = _client(request)
@@ -135,7 +147,7 @@ def create_router(auth: AuthManager) -> APIRouter:
         start_session(request, response)
         return {"status": "ok"}
 
-    @router.post("/auth/login")
+    @router.post("/auth/login", responses={**_TOO_MANY, 401: {"description": "Wrong password"}})
     async def login(body: LoginBody, request: Request, response: Response) -> dict:
         """Check the admin password and start a session."""
         client = _client(request)
@@ -158,7 +170,7 @@ def create_router(auth: AuthManager) -> APIRouter:
         response.delete_cookie(SESSION_COOKIE, path="/")
         return {"status": "ok"}
 
-    @router.post("/auth/password")
+    @router.post("/auth/password", responses={**_BAD_REQUEST, **_WRONG_CURRENT})
     async def change_password(
         body: PasswordChangeBody, request: Request, response: Response
     ) -> dict:
@@ -171,7 +183,7 @@ def create_router(auth: AuthManager) -> APIRouter:
         start_session(request, response)
         return {"status": "ok"}
 
-    @router.put("/auth/settings")
+    @router.put("/auth/settings", responses={**_BAD_REQUEST, **_WRONG_CURRENT})
     async def save_settings(body: AuthSettingsBody) -> dict:
         """Switch between password, proxy and off modes (needs the current password)."""
         await asyncio.to_thread(require_current, body.current_password)

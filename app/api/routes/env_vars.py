@@ -10,6 +10,8 @@ from pydantic import BaseModel
 from app.core.env_manager import EnvManager
 from app.core.registry import WorkerRegistry
 
+_UNKNOWN_TYPE = {404: {"description": "Unknown worker type"}}
+
 
 class EnvVarUpdate(BaseModel):
     """Request body carrying environment variable updates for a worker."""
@@ -21,7 +23,7 @@ def create_router(env_manager: EnvManager, registry: WorkerRegistry) -> APIRoute
     """Return a router exposing env var read and update endpoints per worker."""
     router = APIRouter()
 
-    @router.get("/env-vars/{service_type}")
+    @router.get("/env-vars/{service_type}", responses=_UNKNOWN_TYPE)
     async def get_env_vars(service_type: str) -> list[dict[str, Any]]:
         """Return the env var specs and current values for a worker type."""
         worker_class = registry.get_class(service_type)
@@ -40,7 +42,10 @@ def create_router(env_manager: EnvManager, registry: WorkerRegistry) -> APIRoute
             for spec in worker_class.env_var_specs
         ]
 
-    @router.put("/env-vars/{service_type}")
+    @router.put(
+        "/env-vars/{service_type}",
+        responses={**_UNKNOWN_TYPE, 400: {"description": "Invalid settings"}},
+    )
     async def update_env_vars(service_type: str, body: EnvVarUpdate) -> dict:
         """Persist env var updates for a worker after validating the keys."""
         worker_class = registry.get_class(service_type)

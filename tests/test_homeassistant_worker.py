@@ -115,14 +115,17 @@ def test_creates_waits_downloads_and_deletes(tmp_path: Path) -> None:
     result, get = _run(tmp_path, ws)
 
     archive = result.output_files[0]
-    assert archive.name.startswith("homeassistant_") and archive.suffix == ".tar"
+    assert archive.name.startswith("homeassistant_")
+    assert archive.suffix == ".tar"
     assert archive.read_bytes() == b"tar-bytes"
-    assert "encrypted" in result.message and "NOT" not in result.message
+    assert "encrypted" in result.message
+    assert "NOT" not in result.message
 
     types = [m["type"] for m in ws.sent]
     assert types.count("backup/info") == 3  # polled until idle
     gen = next(m for m in ws.sent if m["type"] == "backup/generate")
-    assert gen["agent_ids"] == ["backup.local"] and gen["password"] == "ha-key"
+    assert gen["agent_ids"] == ["backup.local"]
+    assert gen["password"] == "ha-key"
     assert "include_all_addons" not in gen  # Core/Container rejects add-ons
     assert get.call_args.args[0] == "https://ha.example/api/backup/download/abc123"
     assert get.call_args.kwargs["params"] == {"agent_id": "backup.local"}
@@ -134,12 +137,14 @@ def test_supervisor_includes_addons(tmp_path: Path) -> None:
     _run(tmp_path, ws)
     gen = next(m for m in ws.sent if m["type"] == "backup/generate")
     assert gen["agent_ids"] == ["hassio.local"]
-    assert gen["include_all_addons"] is True and "media" not in gen["include_folders"]
+    assert gen["include_all_addons"] is True
+    assert "media" not in gen["include_folders"]
 
 
 def test_failed_backup_raises(tmp_path: Path) -> None:
+    ws = FakeWS(outcome="failed")
     with pytest.raises(BackupError, match="backup failed"):
-        _run(tmp_path, FakeWS(outcome="failed"))
+        _run(tmp_path, ws)
 
 
 def test_bad_token_raises(tmp_path: Path) -> None:

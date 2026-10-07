@@ -107,8 +107,10 @@ def test_jellyfin_bad_key_fails_backup(tmp_path: Path) -> None:
         return r
 
     with patch("requests.Session.request", side_effect=unauthorized):
+        worker = JellyfinWorker({"name": "jellyfin", "type": "jellyfin"})
+        ctx = _ctx(tmp_path, ENV)
         with pytest.raises(BackupError, match="401"):
-            JellyfinWorker({"name": "jellyfin", "type": "jellyfin"}).run(_ctx(tmp_path, ENV))
+            worker.run(ctx)
 
 
 def test_jellyfin_sends_mediabrowser_token(tmp_path: Path) -> None:
@@ -119,13 +121,15 @@ def test_jellyfin_sends_mediabrowser_token(tmp_path: Path) -> None:
         raise requests.ConnectionError("down")
 
     with patch.object(requests.Session, "request", autospec=True, side_effect=capture):
+        worker = JellyfinWorker({"name": "jellyfin", "type": "jellyfin"})
+        ctx = _ctx(tmp_path, ENV)
         with pytest.raises(BackupError, match="failed"):
-            JellyfinWorker({"name": "jellyfin", "type": "jellyfin"}).run(_ctx(tmp_path, ENV))
+            worker.run(ctx)
     assert seen["Authorization"] == 'MediaBrowser Token="k3y"'
 
 
 def test_jellyfin_missing_key_fails(tmp_path: Path) -> None:
+    worker = JellyfinWorker({"name": "jellyfin", "type": "jellyfin"})
+    ctx = _ctx(tmp_path, {"JELLYFIN_URL": "http://jf"})
     with pytest.raises(BackupError, match="JELLYFIN_API_KEY"):
-        JellyfinWorker({"name": "jellyfin", "type": "jellyfin"}).run(
-            _ctx(tmp_path, {"JELLYFIN_URL": "http://jf"})
-        )
+        worker.run(ctx)

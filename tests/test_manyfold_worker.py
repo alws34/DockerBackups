@@ -77,11 +77,15 @@ def test_rejected_client_fails_with_hint(tmp_path: Path) -> None:
     resp = MagicMock()
     resp.raise_for_status.side_effect = requests.HTTPError("401 Client Error: Unauthorized")
     with patch("requests.Session.request", return_value=resp):
+        worker = ManyfoldWorker({"name": "manyfold", "type": "manyfold"})
+        ctx = _ctx(tmp_path, _ENV)
         with pytest.raises(BackupError, match="client ID/secret"):
-            ManyfoldWorker({"name": "manyfold", "type": "manyfold"}).run(_ctx(tmp_path, _ENV))
+            worker.run(ctx)
 
 
 def test_missing_secret_fails(tmp_path: Path) -> None:
     env = {k: v for k, v in _ENV.items() if k != "MANYFOLD_CLIENT_SECRET"}
+    worker = ManyfoldWorker({"name": "manyfold", "type": "manyfold"})
+    ctx = _ctx(tmp_path, env)
     with pytest.raises(BackupError, match="MANYFOLD_CLIENT_SECRET"):
-        ManyfoldWorker({"name": "manyfold", "type": "manyfold"}).run(_ctx(tmp_path, env))
+        worker.run(ctx)

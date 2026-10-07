@@ -104,56 +104,16 @@ class UptimeKumaWorker(BackupWorker):
                     got[event] = args[0] if args else None
                     arrived.notify_all()
 
-        def call(event: str, data: object = None) -> dict:
-            try:
-                res = sio.call(event, data, timeout=_TIMEOUT)
-            except socketio.exceptions.SocketIOError as e:
-                raise BackupError(f"Uptime Kuma did not answer '{event}' in time: {e}") from e
-            if not isinstance(res, dict):
-                raise BackupError(f"Uptime Kuma sent an unexpected reply to '{event}': {res!r}")
-            return res
-
-        def need(event: str, data: object = None) -> dict:
-            res = call(event, data)
-            if not res.get("ok"):
-                raise BackupError(f"Uptime Kuma refused '{event}': {res.get('msg')}")
-            return res
-
         try:
             sio.connect(url, wait_timeout=_TIMEOUT)
         except socketio.exceptions.ConnectionError as e:
             raise BackupError(f"Could not connect to Uptime Kuma at {url}: {e}") from e
 
         try:
-            # Like the web UI: send the 2FA code only when the server asks for it.
-            creds = {"username": username, "password": password}
-            res = call("login", creds)
-            if res.get("tokenRequired"):
-                if not totp_secret:
-                    raise BackupError(
-                        "This Uptime Kuma account has 2FA enabled. Set UPTIMEKUMA_TOTP_SECRET "
-                        "or turn 2FA off (Settings → Security)."
-                    )
-                res = call("login", {**creds, "token": totp(totp_secret)})
-            if not res.get("ok"):
-                raise BackupError(
-                    f"Uptime Kuma login failed ({res.get('msg')}). Check UPTIMEKUMA_USERNAME, "
-                    "UPTIMEKUMA_PASSWORD and, with 2FA, UPTIMEKUMA_TOTP_SECRET (each 2FA code "
-                    "is accepted once, so two runs within 30 seconds fail)."
-                )
-
-            def missing() -> list[str]:
-                # An "info" without version is the one sent to every client before login.
-                version = str((got.get("info") or {}).get("version", ""))
-                if not version:
-                    return ["info", *(k for k in _PUSHED if k not in got)]
-                major = version.split(".")[0]
-                wanted = [*_PUSHED, *(_OPTIONAL if major.isdigit() and int(major) >= 2 else ())]
-                return [k for k in wanted if k not in got]
-
+            _login(sio, username, password, totp_secret)
             with arrived:
-                if not arrived.wait_for(lambda: not missing(), timeout=_TIMEOUT):
-                    raise BackupError(f"Uptime Kuma logged in but never sent: {missing()}")
+                if not arrived.wait_for(lambda: not _missing(got), timeout=_TIMEOUT):
+                    raise BackupError(f"Uptime Kuma logged in but never sent: {_missing(got)}")
                 pushed = dict(got)
 
             maintenance = []
@@ -162,12 +122,12 @@ class UptimeKumaWorker(BackupWorker):
                 maintenance.append(
                     {
                         **item,
-                        "monitors": need("getMonitorMaintenance", mid)["monitors"],
-                        "status_pages": need("getMaintenanceStatusPage", mid)["statusPages"],
+                        "monitors": _need(sio, "getMonitorMaintenance", mid)["monitors"],
+                        "status_pages": _need(sio, "getMaintenanceStatusPage", mid)["statusPages"],
                     }
                 )
-            tags = need("getTags")["tags"]
-            settings = need("getSettings")["data"]
+            tags = _need(sio, "getTags")["tags"]
+            settings = _need(sio, "getSettings")["data"]
         finally:
             sio.disconnect()
 
@@ -195,6 +155,55 @@ class UptimeKumaWorker(BackupWorker):
             "info": pushed["info"],
         }
         return self.archive_json(context, started_at, files)
+
+
+def _call(sio: socketio.Client, event: str, data: object = None) -> dict:
+    """Send an event and return the server's reply."""
+    try:
+        res = sio.call(event, data, timeout=_TIMEOUT)
+    except socketio.exceptions.SocketIOError as e:
+        raise BackupError(f"Uptime Kuma did not answer '{event}' in time: {e}") from e
+    if not isinstance(res, dict):
+        raise BackupError(f"Uptime Kuma sent an unexpected reply to '{event}': {res!r}")
+    return res
+
+
+def _need(sio: socketio.Client, event: str, data: object = None) -> dict:
+    """Like _call, but a reply without ok is an error."""
+    res = _call(sio, event, data)
+    if not res.get("ok"):
+        raise BackupError(f"Uptime Kuma refused '{event}': {res.get('msg')}")
+    return res
+
+
+def _login(sio: socketio.Client, username: str, password: str, totp_secret: str) -> None:
+    """Log in like the web UI: send the 2FA code only when the server asks for it."""
+    creds = {"username": username, "password": password}
+    res = _call(sio, "login", creds)
+    if res.get("tokenRequired"):
+        if not totp_secret:
+            raise BackupError(
+                "This Uptime Kuma account has 2FA enabled. Set UPTIMEKUMA_TOTP_SECRET "
+                "or turn 2FA off (Settings → Security)."
+            )
+        res = _call(sio, "login", {**creds, "token": totp(totp_secret)})
+    if not res.get("ok"):
+        raise BackupError(
+            f"Uptime Kuma login failed ({res.get('msg')}). Check UPTIMEKUMA_USERNAME, "
+            "UPTIMEKUMA_PASSWORD and, with 2FA, UPTIMEKUMA_TOTP_SECRET (each 2FA code "
+            "is accepted once, so two runs within 30 seconds fail)."
+        )
+
+
+def _missing(got: dict[str, object]) -> list[str]:
+    """The pushed events still to arrive for the server's version."""
+    # An "info" without version is the one sent to every client before login.
+    version = str((got.get("info") or {}).get("version", ""))
+    if not version:
+        return ["info", *(k for k in _PUSHED if k not in got)]
+    major = version.split(".")[0]
+    wanted = [*_PUSHED, *(_OPTIONAL if major.isdigit() and int(major) >= 2 else ())]
+    return [k for k in wanted if k not in got]
 
 
 def _as_list(data: object) -> list:

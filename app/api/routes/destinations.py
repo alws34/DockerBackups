@@ -33,6 +33,10 @@ from app.destinations.sftp import KEY_FILE_ENV, save_private_key
 _MAX_LOGIN_SESSIONS = 20
 _TEST_TIMEOUT_SECONDS = 90
 
+_BAD_REQUEST = {400: {"description": "Invalid request or settings"}}
+_UNKNOWN = {404: {"description": "Unknown destination"}}
+_BAD_OR_UNKNOWN = {**_BAD_REQUEST, **_UNKNOWN}
+
 # Bring-your-own Google client flow: state -> {redirect_uri, code_verifier}
 _pending_oauth: dict[str, dict[str, str]] = {}
 # Device-code logins in progress: id -> {"status": pending|connected|failed, "message": str}
@@ -103,7 +107,7 @@ def create_router(env_manager: EnvManager, scheduler: BackupScheduler) -> APIRou
 
         return await asyncio.to_thread(build)
 
-    @router.put("/destinations/{dest_type}/env-vars")
+    @router.put("/destinations/{dest_type}/env-vars", responses=_BAD_OR_UNKNOWN)
     async def update_destination_env_vars(dest_type: str, body: DestinationEnvVarUpdate) -> dict:
         """Persist settings for a destination after validating the keys."""
         dest_class = get_class(dest_type)
@@ -119,7 +123,7 @@ def create_router(env_manager: EnvManager, scheduler: BackupScheduler) -> APIRou
             raise HTTPException(status_code=400, detail=str(e)) from e
         return {"status": "saved", "updated_keys": list(body.updates)}
 
-    @router.post("/destinations/{dest_type}/test")
+    @router.post("/destinations/{dest_type}/test", responses=_UNKNOWN)
     async def test_destination(dest_type: str) -> dict[str, Any]:
         """Connect with the saved settings and report what happened."""
         dest_class = get_class(dest_type)
@@ -144,7 +148,7 @@ def create_router(env_manager: EnvManager, scheduler: BackupScheduler) -> APIRou
         except TimeoutError:
             return {"ok": False, "message": f"No answer within {_TEST_TIMEOUT_SECONDS} seconds."}
 
-    @router.post("/destinations/{dest_type}/login")
+    @router.post("/destinations/{dest_type}/login", responses=_BAD_OR_UNKNOWN)
     async def start_login(dest_type: str) -> dict[str, Any]:
         """Start a device-code login; the GUI shows the code and polls the status."""
         dest_class = get_class(dest_type)
@@ -175,14 +179,17 @@ def create_router(env_manager: EnvManager, scheduler: BackupScheduler) -> APIRou
             "expires_in": login.expires_in,
         }
 
-    @router.get("/destinations/logins/{login_id}")
+    @router.get(
+        "/destinations/logins/{login_id}",
+        responses={404: {"description": "Unknown or expired login"}},
+    )
     async def login_progress(login_id: str) -> dict[str, str]:
         """Report whether a device-code login has finished."""
         if login_id not in _logins:
             raise HTTPException(status_code=404, detail="Unknown or expired login")
         return _logins[login_id]
 
-    @router.delete("/destinations/{dest_type}/login")
+    @router.delete("/destinations/{dest_type}/login", responses=_BAD_OR_UNKNOWN)
     async def disconnect(dest_type: str) -> dict:
         """Revoke (where the provider allows it) and forget the stored tokens."""
         dest_class = get_class(dest_type)
@@ -192,7 +199,7 @@ def create_router(env_manager: EnvManager, scheduler: BackupScheduler) -> APIRou
             raise HTTPException(status_code=400, detail=str(e)) from e
         return {"status": "disconnected"}
 
-    @router.post("/destinations/sftp/key")
+    @router.post("/destinations/sftp/key", responses=_BAD_REQUEST)
     async def save_sftp_key(body: KeyPayload) -> dict:
         """Store a pasted SSH private key (mode 600) and point SFTP_KEY_FILE at it."""
 
@@ -210,7 +217,7 @@ def create_router(env_manager: EnvManager, scheduler: BackupScheduler) -> APIRou
 
     # ── Google Drive with your own OAuth client (advanced) ─────────────────────
 
-    @router.post("/destinations/google_drive/credentials")
+    @router.post("/destinations/google_drive/credentials", responses=_BAD_REQUEST)
     async def upload_credentials(body: CredentialsPayload) -> dict:
         """Validate and store the uploaded Google OAuth2 client secret JSON."""
         try:
@@ -240,7 +247,10 @@ def create_router(env_manager: EnvManager, scheduler: BackupScheduler) -> APIRou
         await asyncio.to_thread(store)
         return {"status": "saved", "client_id": client_info.get("client_id")}
 
-    @router.post("/destinations/google_drive/oauth/start")
+    @router.post(
+        "/destinations/google_drive/oauth/start",
+        responses={**_BAD_REQUEST, 500: {"description": "Could not build the auth URL"}},
+    )
     async def oauth_start(body: dict) -> dict:
         """Build a Google OAuth2 authorization URL using PKCE and return it."""
         creds_path = google_drive.credentials_path()

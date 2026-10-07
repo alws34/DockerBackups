@@ -144,7 +144,8 @@ def test_secrets_are_stripped_from_preferences(tmp_path: Path) -> None:
     assert set(json.loads(files["notes.json"])["preferences_removed"]) == removed
     # No secret value leaks anywhere in the archive.
     blob = b"".join(files.values())
-    assert b"SECRET-" not in blob and b'"pw"' not in blob
+    assert b"SECRET-" not in blob
+    assert b'"pw"' not in blob
 
 
 def test_strip_secrets_keeps_non_secret_keys() -> None:
@@ -179,13 +180,16 @@ def test_export_404_is_skipped_with_a_note(tmp_path: Path) -> None:
 def test_login_failure_raises(tmp_path: Path, login: MagicMock, match: str) -> None:
     route, calls = _router(login=login)
     with patch("requests.Session.request", side_effect=route):
+        worker = QBittorrentWorker({"name": "qbittorrent", "type": "qbittorrent"})
+        ctx = _ctx(tmp_path)
         with pytest.raises(BackupError, match=match):
-            QBittorrentWorker({"name": "qbittorrent", "type": "qbittorrent"}).run(_ctx(tmp_path))
+            worker.run(ctx)
     assert len(calls) == 1
 
 
 def test_missing_env_fails(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path)
     ctx.env = {}
+    worker = QBittorrentWorker({"name": "qbittorrent", "type": "qbittorrent"})
     with pytest.raises(BackupError, match="QBITTORRENT_URL"):
-        QBittorrentWorker({"name": "qbittorrent", "type": "qbittorrent"}).run(ctx)
+        worker.run(ctx)

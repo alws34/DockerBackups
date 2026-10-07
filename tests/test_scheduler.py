@@ -179,7 +179,8 @@ def test_state_keeps_a_capped_run_history(tmp_path: Path, monkeypatch: pytest.Mo
             },
         )
     history = scheduler.get_state("svc")["history"]
-    assert len(history) == 30 and history[-1]["finished_at"] == "run-34"
+    assert len(history) == 30
+    assert history[-1]["finished_at"] == "run-34"
     assert history[-1] == {"finished_at": "run-34", "success": True, "delivered": False}
 
 
