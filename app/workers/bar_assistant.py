@@ -85,7 +85,7 @@ class BarAssistantWorker(BackupWorker):
             raise BackupError(f"Failed to fetch bars: {e}") from e
 
         bars = _unwrap(bars_resp)
-        if not bars:
+        if not isinstance(bars, list) or not bars:
             raise BackupError("No bars found — cannot determine bar_id")
 
         with tempfile.TemporaryDirectory() as tmp:
