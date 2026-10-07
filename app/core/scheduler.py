@@ -257,7 +257,7 @@ class BackupScheduler:
                 logger.error(f"[{name}] Backup reported failure: {result.message}")
             return result
         except BackupError as e:
-            logger.error(f"[{name}] BackupError: {e}")
+            logger.exception(f"[{name}] BackupError: {e}")
             self._persist_error_state(name, str(e))
             return None
         except Exception as e:

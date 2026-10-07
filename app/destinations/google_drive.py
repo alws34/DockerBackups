@@ -226,7 +226,7 @@ class GoogleDriveDestination(BackupDestination):
             refresh_token = json.loads(path.read_text()).get("refresh_token", "")
             # Revoke at Google too, so the token is dead even if a copy of the file exists.
             requests.post(_REVOKE_URL, data={"token": refresh_token}, timeout=30)
-        except (OSError, ValueError, requests.RequestException) as e:
+        except (OSError, ValueError) as e:  # OSError includes requests.RequestException
             logger.warning(f"Google token revocation failed (deleting it locally anyway): {e}")
         path.unlink(missing_ok=True)
 

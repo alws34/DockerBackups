@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.api.auth import SESSION_COOKIE, SESSION_MAX_SECONDS, AuthManager
-from app.core.context import BackupError
+from app.api.routes import run_or_400
 
 # Reachable without a session: the login screen needs these.
 _PUBLIC_API = {
@@ -21,9 +21,10 @@ _PUBLIC_API = {
     "/api/destinations/google_drive/oauth/callback",
 }
 
-_BAD_REQUEST = {400: {"description": "Invalid password or settings"}}
-_TOO_MANY = {429: {"description": "Too many failed attempts"}}
-_WRONG_CURRENT = {403: {"description": "Current password is wrong"}}
+# Sonar (S8415) only reads literal status-code keys in `responses=`, not `**` merges.
+_BAD_REQUEST = {"description": "Invalid password or settings"}
+_TOO_MANY = {"description": "Too many failed attempts"}
+_WRONG_CURRENT = {"description": "Current password is wrong"}
 
 
 class LoginBody(BaseModel):
@@ -79,48 +80,60 @@ def install_auth_guard(app: FastAPI, auth: AuthManager) -> None:
         return await call_next(request)
 
 
+def _status(auth: AuthManager, request: Request) -> dict:
+    """What the GUI should show: setup form, login form, or the app."""
+    client, headers = _client(request), _headers(request)
+    return {
+        "mode": auth.mode,
+        "setup_required": auth.mode == "password" and not auth.password_set,
+        "authenticated": auth.authenticated(client, headers, request.cookies.get(SESSION_COOKIE)),
+        "user": auth.proxy_user(client, headers) if auth.mode == "proxy" else "",
+        "trusted_proxies": ",".join(str(n) for n in auth.trusted_proxies),
+        "proxy_header": auth.proxy_header,
+    }
+
+
+def _start_session(auth: AuthManager, request: Request, response: Response) -> None:
+    secure = (
+        request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "") == "https"
+    )
+    response.set_cookie(
+        SESSION_COOKIE,
+        auth.create_session(),
+        max_age=SESSION_MAX_SECONDS,
+        httponly=True,
+        samesite="lax",
+        secure=secure,
+        path="/",
+    )
+
+
+def _require_current(auth: AuthManager, password: str) -> None:
+    if auth.password_set and not auth.check_password(password):
+        raise HTTPException(status_code=403, detail="Current password is wrong.")
+
+
+def _check_lock(auth: AuthManager, client: str) -> None:
+    if wait := auth.locked_for(client):
+        raise HTTPException(
+            status_code=429, detail=f"Too many attempts. Try again in {wait // 60 + 1} min."
+        )
+
+
 def create_router(auth: AuthManager) -> APIRouter:
     """Return the router for /api/auth/*."""
     router = APIRouter()
 
-    def start_session(request: Request, response: Response) -> None:
-        secure = (
-            request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "") == "https"
-        )
-        response.set_cookie(
-            SESSION_COOKIE,
-            auth.create_session(),
-            max_age=SESSION_MAX_SECONDS,
-            httponly=True,
-            samesite="lax",
-            secure=secure,
-            path="/",
-        )
-
-    def require_current(password: str) -> None:
-        if auth.password_set and not auth.check_password(password):
-            raise HTTPException(status_code=403, detail="Current password is wrong.")
-
     @router.get("/auth/status")
     async def status(request: Request) -> dict:
         """What the GUI should show: setup form, login form, or the app."""
-        cookie = request.cookies.get(SESSION_COOKIE)
-        return {
-            "mode": auth.mode,
-            "setup_required": auth.mode == "password" and not auth.password_set,
-            "authenticated": auth.authenticated(_client(request), _headers(request), cookie),
-            "user": auth.proxy_user(_client(request), _headers(request))
-            if auth.mode == "proxy"
-            else "",
-            "trusted_proxies": ",".join(str(n) for n in auth.trusted_proxies),
-            "proxy_header": auth.proxy_header,
-        }
+        return _status(auth, request)
 
     @router.post(
         "/auth/setup",
         responses={
-            **_BAD_REQUEST,
-            **_TOO_MANY,
+            400: _BAD_REQUEST,
+            429: _TOO_MANY,
             403: {"description": "Wrong setup code"},
             409: {"description": "An admin password already exists"},
         },
@@ -130,36 +143,27 @@ def create_router(auth: AuthManager) -> APIRouter:
         client = _client(request)
         if auth.password_set:
             raise HTTPException(status_code=409, detail="An admin password already exists.")
-        if wait := auth.locked_for(client):
-            raise HTTPException(
-                status_code=429, detail=f"Too many attempts. Try again in {wait // 60 + 1} min."
-            )
+        _check_lock(auth, client)
         if not auth.check_setup_code(body.setup_code):
             auth.record_failure(client)
             raise HTTPException(
                 status_code=403, detail="Wrong setup code. It is printed in the server logs."
             )
-        try:
-            await asyncio.to_thread(auth.set_password, body.password)
-        except BackupError as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
+        await run_or_400(auth.set_password, body.password)
         auth.record_success(client)
-        start_session(request, response)
+        _start_session(auth, request, response)
         return {"status": "ok"}
 
-    @router.post("/auth/login", responses={**_TOO_MANY, 401: {"description": "Wrong password"}})
+    @router.post("/auth/login", responses={429: _TOO_MANY, 401: {"description": "Wrong password"}})
     async def login(body: LoginBody, request: Request, response: Response) -> dict:
         """Check the admin password and start a session."""
         client = _client(request)
-        if wait := auth.locked_for(client):
-            raise HTTPException(
-                status_code=429, detail=f"Too many attempts. Try again in {wait // 60 + 1} min."
-            )
+        _check_lock(auth, client)
         if not await asyncio.to_thread(auth.check_password, body.password):
             auth.record_failure(client)
             raise HTTPException(status_code=401, detail="Wrong password.")
         auth.record_success(client)
-        start_session(request, response)
+        _start_session(auth, request, response)
         return {"status": "ok"}
 
     @router.post("/auth/logout")
@@ -170,29 +174,21 @@ def create_router(auth: AuthManager) -> APIRouter:
         response.delete_cookie(SESSION_COOKIE, path="/")
         return {"status": "ok"}
 
-    @router.post("/auth/password", responses={**_BAD_REQUEST, **_WRONG_CURRENT})
+    @router.post("/auth/password", responses={400: _BAD_REQUEST, 403: _WRONG_CURRENT})
     async def change_password(
         body: PasswordChangeBody, request: Request, response: Response
     ) -> dict:
         """Change the admin password; every other session is signed out."""
-        await asyncio.to_thread(require_current, body.current_password)
-        try:
-            await asyncio.to_thread(auth.set_password, body.new_password)
-        except BackupError as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
-        start_session(request, response)
+        await asyncio.to_thread(_require_current, auth, body.current_password)
+        await run_or_400(auth.set_password, body.new_password)
+        _start_session(auth, request, response)
         return {"status": "ok"}
 
-    @router.put("/auth/settings", responses={**_BAD_REQUEST, **_WRONG_CURRENT})
+    @router.put("/auth/settings", responses={400: _BAD_REQUEST, 403: _WRONG_CURRENT})
     async def save_settings(body: AuthSettingsBody) -> dict:
         """Switch between password, proxy and off modes (needs the current password)."""
-        await asyncio.to_thread(require_current, body.current_password)
-        try:
-            await asyncio.to_thread(
-                auth.save_settings, body.mode, body.trusted_proxies, body.proxy_header
-            )
-        except BackupError as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
+        await asyncio.to_thread(_require_current, auth, body.current_password)
+        await run_or_400(auth.save_settings, body.mode, body.trusted_proxies, body.proxy_header)
         return {"status": "saved", "mode": auth.mode}
 
     return router
