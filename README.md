@@ -9,7 +9,7 @@
   <a href="https://sonarcloud.io/component_measures?id=alws34_homelab-takeout&metric=coverage"><img alt="Coverage" src="https://img.shields.io/sonar/coverage/alws34_homelab-takeout?server=https%3A%2F%2Fsonarcloud.io&style=flat-square" /></a>
   <img alt="Python 3.12" src="https://img.shields.io/badge/python-3.12-3776AB?style=flat-square&logo=python&logoColor=white" />
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/alws34/homelab-takeout?style=flat-square" /></a>
-  <img alt="Supported services" src="https://img.shields.io/badge/services-12-34d399?style=flat-square" />
+  <img alt="Supported services" src="https://img.shields.io/badge/services-21-34d399?style=flat-square" />
   <a href="https://github.com/alws34/homelab-takeout/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/alws34/homelab-takeout?style=flat-square" /></a>
 </p>
 
@@ -49,7 +49,8 @@ a schedule and ships the result somewhere safe.
 
 ## Features
 
-- 12 services supported out of the box, each a single small Python file
+- 21 apps supported out of the box, each a single small Python file, and several
+  instances of the same app (two AdGuard Homes, two qBittorrents) work side by side
 - Daily at a fixed time, or every *N* hours, plus **Back up now** for one app or all
 - Local retention (default: 30 days) and per-destination retention (default: last 3)
 - Copies to **Google Drive, OneDrive, SFTP, SMB** or any local folder after every run
@@ -73,6 +74,15 @@ a schedule and ships the result somewhere safe.
 | [Immich](docs/services/immich.md) | Metadata only: albums, people, tags, EXIF (not media files) | 📄 Reference |
 | [Nginx Proxy Manager](docs/services/nginx-proxy-manager.md) | Hosts, streams, access lists, cert metadata, settings | 📄 Reference |
 | [AdGuard Home](docs/services/adguard-home.md) | DNS settings, filters, rewrites, clients, DHCP/TLS config | 📄 Reference |
+| [Home Assistant](docs/services/home-assistant.md) | A full native HA backup (config, history, add-ons on HA OS), encrypted with HA's key | ✅ HA's own restore |
+| [Open WebUI](docs/services/open-webui.md) | Chats, notes, models, prompts, tools, knowledge lists; admin config | ✅ Native import (chats, config, models) |
+| [SparkyFitness](docs/services/sparkyfitness.md) | Food diary, foods, meals, exercises, measurements, sleep, goals | 🟡 Through its CSV importers |
+| [qBittorrent](docs/services/qbittorrent.md) | Every `.torrent` file, categories, tags, RSS rules, settings | 🟡 Re-add torrents |
+| [Jellyfin](docs/services/jellyfin.md) | Per-user watch state, favourites, playlists, collections, libraries | 📄 Reference |
+| [Plex](docs/services/plex.md) | Watch state, ratings, history, playlists, collections, libraries | 📄 Reference |
+| [Uptime Kuma](docs/services/uptime-kuma.md) | Monitors, notifications, status pages, maintenance, settings | 📄 Reference |
+| [OpenProject](docs/services/openproject.md) | Projects, work packages, relations, versions, time entries | 📄 Reference |
+| [Manyfold](docs/services/manyfold.md) | Model metadata: tags, notes, licences, creators, collections (not files) | 📄 Reference |
 
 **Restore legend:** ✅ the app's own import takes the file. 🟡 imports with
 caveats. 📄 a complete, readable record you rebuild from; there's no one-click

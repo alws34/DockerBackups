@@ -150,6 +150,9 @@ without a restart.
 | `immich`                      | Immich (metadata)    | REST API + tar archive       |
 | `nginx_proxy_manager`         | Nginx Proxy Manager  | REST API (token login) + tar archive |
 | `adguardhome`                 | AdGuard Home         | REST API (basic auth) + tar archive |
+| `plex`                        | Plex                 | REST API (X-Plex-Token) + tar archive |
+| `jellyfin`                    | Jellyfin             | REST API (API key) + tar archive |
+| `uptimekuma`                  | Uptime Kuma          | Socket.IO API (login) + tar archive |
 
 See [`docs/services/`](docs/services/) for what each worker backs up and how
 to configure its credentials.
