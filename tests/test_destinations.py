@@ -207,7 +207,8 @@ def test_google_device_login_stores_tokens(tmp_path: Path, monkeypatch):
         assert login.wait() == "me@example.com"
     assert post.call_args_list[0].kwargs["data"]["scope"].endswith("/drive.file")
     saved = json.loads(tokens.read_text())
-    assert saved["refresh_token"] == "rt" and saved["client_id"] == "cid"
+    assert saved["refresh_token"] == "rt"
+    assert saved["client_id"] == "cid"
     assert stat.S_IMODE(tokens.stat().st_mode) == 0o600
     status = google_drive.GoogleDriveDestination.login_status(env)
     assert status == {"connected": True, "account": "me@example.com"}
@@ -258,9 +259,10 @@ def _fake_transport(server_key: paramiko.PKey) -> MagicMock:
 def test_sftp_unknown_host_key_is_reported_before_login():
     key = paramiko.ECDSAKey.generate()
     transport = _fake_transport(key)
+    dest = _sftp()
     with patch.object(paramiko, "Transport", return_value=transport):
         with pytest.raises(UnknownHostKeyError) as err:
-            _sftp().check()
+            dest.check()
     assert err.value.fingerprint == fingerprint(key)
     assert err.value.fingerprint.startswith("SHA256:")
     transport.auth_password.assert_not_called()
@@ -268,9 +270,10 @@ def test_sftp_unknown_host_key_is_reported_before_login():
 
 def test_sftp_changed_host_key_refuses_to_send_credentials():
     transport = _fake_transport(paramiko.ECDSAKey.generate())
+    dest = _sftp(expected="SHA256:somethingElse")
     with patch.object(paramiko, "Transport", return_value=transport):
         with pytest.raises(BackupError, match="changed"):
-            _sftp(expected="SHA256:somethingElse").check()
+            dest.check()
     transport.auth_password.assert_not_called()
 
 
@@ -328,5 +331,6 @@ def test_hung_destination_times_out_without_blocking_others(tmp_path: Path):
         patch.dict(scheduler_module._DESTINATION_LOCKS, locks),
     ):
         uploads = sched._upload_to_destinations(result, context)
-    assert uploads["hangs"]["ok"] is False and "Timed out" in uploads["hangs"]["message"]
+    assert uploads["hangs"]["ok"] is False
+    assert "Timed out" in uploads["hangs"]["message"]
     assert uploads["good"]["ok"] is True
