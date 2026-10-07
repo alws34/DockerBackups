@@ -158,11 +158,10 @@ dialog h3 { font: 650 19px/1.25 var(--body); margin: 0; text-wrap: balance; }
 .d-head h3 { font: 650 19px/1.2 var(--body); margin: 0; }
 .d-head .spacer { flex: 1; }
 .cat-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(230px, 100%), 1fr)); gap: 10px; max-height: 56vh; overflow: auto; padding: 2px; }
-.cat-item { min-width: 0; border: 1px solid var(--rule); border-radius: 8px; padding: 12px; display: grid; gap: 8px; align-content: start; }
+.cat-item { min-width: 0; border: 1px solid var(--rule); border-radius: 8px; padding: 12px; display: grid; gap: 8px; align-content: start; grid-template-rows: auto auto auto 1fr; }
 .cat-item, .tile { grid-template-columns: minmax(0, 1fr); }
 .cat-item .tile-name { font-size: 15px; white-space: normal; }
 .cat-item .row.foot { margin-top: auto; padding-top: 4px; flex-wrap: wrap; }
-.cat-item { grid-template-rows: auto auto auto 1fr; }
 .field + .fields { margin-top: 12px; }
 .cat-item .row .btn { flex-shrink: 0; }
 .cat-item.pick { text-align: left; background: var(--surface); cursor: pointer; font: inherit; color: inherit; }
