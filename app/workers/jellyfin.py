@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 from typing import ClassVar
 
@@ -16,6 +17,24 @@ _FIELDS = "ProviderIds,Path"
 # Each filter is its own query: Jellyfin ANDs multiple filters together.
 _WATCH_FILTERS = ("IsPlayed", "IsFavorite", "IsResumable", "Likes", "Dislikes")
 _SECRET_WORDS = ("password", "secret", "token", "apikey")
+_ITEMS = "/Items"
+
+
+def _paged(get: Callable[..., dict | list], path: str, **params: str) -> list:
+    """Every item of a paged listing, with the fields a restore needs."""
+    items: list = []
+    while True:
+        page = get(
+            path,
+            **params,
+            fields=_FIELDS,
+            enableImages="false",
+            startIndex=str(len(items)),
+            limit=str(_PAGE_SIZE),
+        )
+        items.extend(page["Items"])
+        if len(page["Items"]) < _PAGE_SIZE:
+            return items
 
 
 def _redact(data: object) -> object:
@@ -71,19 +90,7 @@ class JellyfinWorker(BackupWorker):
                 return fetch_json(s, "GET", f"{base}{path}", params=params)
 
             def paged(path: str, **params: str) -> list:
-                items: list = []
-                while True:
-                    page = get(
-                        path,
-                        **params,
-                        fields=_FIELDS,
-                        enableImages="false",
-                        startIndex=str(len(items)),
-                        limit=str(_PAGE_SIZE),
-                    )
-                    items.extend(page["Items"])
-                    if len(page["Items"]) < _PAGE_SIZE:
-                        return items
+                return _paged(get, path, **params)
 
             users = get("/Users")
             watch_state: dict[str, list] = {}
@@ -92,11 +99,11 @@ class JellyfinWorker(BackupWorker):
                 uid = user["Id"]
                 seen: dict[str, dict] = {}
                 for f in _WATCH_FILTERS:
-                    for item in paged("/Items", userId=uid, recursive="true", filters=f):
+                    for item in paged(_ITEMS, userId=uid, recursive="true", filters=f):
                         seen[item["Id"]] = item
                 watch_state[user["Name"]] = list(seen.values())
                 for item in paged(
-                    "/Items", userId=uid, recursive="true", includeItemTypes="Playlist,BoxSet"
+                    _ITEMS, userId=uid, recursive="true", includeItemTypes="Playlist,BoxSet"
                 ):
                     containers.setdefault(item["Id"], (item, uid))
 
@@ -112,7 +119,7 @@ class JellyfinWorker(BackupWorker):
                     )
                 else:
                     collections.append(
-                        {"collection": item, "items": paged("/Items", userId=uid, parentId=cid)}
+                        {"collection": item, "items": paged(_ITEMS, userId=uid, parentId=cid)}
                     )
 
             files = {

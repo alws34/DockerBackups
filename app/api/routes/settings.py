@@ -31,7 +31,7 @@ def create_router(scheduler: BackupScheduler) -> APIRouter:
         """Return the current schedule and retention settings."""
         return scheduler.get_settings()
 
-    @router.put("/settings")
+    @router.put("/settings", responses={400: {"description": "Invalid settings"}})
     async def update_settings(body: SettingsUpdate) -> dict:
         """Validate and persist updated schedule and retention settings."""
         if not _TIME_RE.match(body.daily_at):

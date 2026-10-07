@@ -18,6 +18,20 @@ from app.workers.base import BackupWorker, EnvVarSpec, fetch_json
 _SKIPPABLE = (401, 403, 404)
 
 
+def _paged(get: Callable[..., dict | list], path: str) -> list:
+    """Every item of a paged listing."""
+    items: list = []
+    page = 1
+    while True:
+        data = get(path, page=page)
+        if isinstance(data, list):  # older versions return everything at once
+            return data
+        items.extend(data["items"])
+        if not data["items"] or len(items) >= data["total"]:
+            return items
+        page += 1
+
+
 class OpenWebUIWorker(BackupWorker):
     """Export the API key user's chats plus workspace and (for admins) instance config."""
 
@@ -62,16 +76,7 @@ class OpenWebUIWorker(BackupWorker):
                 return fetch_json(s, "GET", f"{api}{path}", params=params)
 
             def paged(path: str) -> list:
-                items: list = []
-                page = 1
-                while True:
-                    data = get(path, page=page)
-                    if isinstance(data, list):  # older versions return everything at once
-                        return data
-                    items.extend(data["items"])
-                    if not data["items"] or len(items) >= data["total"]:
-                        return items
-                    page += 1
+                return _paged(get, path)
 
             def optional(name: str, fetch: Callable[[], object]) -> object:
                 try:

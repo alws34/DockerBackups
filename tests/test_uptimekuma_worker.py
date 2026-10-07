@@ -126,7 +126,9 @@ def test_exports_everything_read_only(tmp_path: Path) -> None:
     assert req.call_args.args[1] == "http://kuma:3001/api/status-page/home"
     assert files["monitors"] == [_PUSHES["monitorList"]["1"]]
     assert files["notifications"][0]["name"] == "tg"
-    assert files["docker_hosts"] and files["api_keys"] and files["proxies"] == []
+    assert files["docker_hosts"]
+    assert files["api_keys"]
+    assert files["proxies"] == []
     assert files["remote_browsers"] == []
     assert files["maintenance"] == [
         {"id": 3, "title": "patch day", "monitors": [{"id": 1}], "status_pages": [{"id": 1}]}
@@ -145,7 +147,8 @@ def test_v1_has_no_remote_browsers(tmp_path: Path) -> None:
     result, _ = _run(tmp_path, FakeSio(_replies({"ok": True}), pushes))
     with tarfile.open(result.output_files[0]) as tar:
         names = {Path(m.name).stem for m in tar.getmembers() if m.isfile()}
-    assert "monitors" in names and "remote_browsers" not in names
+    assert "monitors" in names
+    assert "remote_browsers" not in names
 
 
 def test_login_failure_raises(tmp_path: Path) -> None:

@@ -95,7 +95,8 @@ async def test_first_run_needs_setup_code_from_logs(make_app, tmp_path: Path):
     assert code == auth.setup_code
 
     status, _, body = await call(app, "GET", "/api/auth/status")
-    assert body["setup_required"] and not body["authenticated"]
+    assert body["setup_required"]
+    assert not body["authenticated"]
     assert (await call(app, "GET", "/api/settings"))[0] == 401
 
     status, _, _ = await call(
@@ -105,14 +106,16 @@ async def test_first_run_needs_setup_code_from_logs(make_app, tmp_path: Path):
     status, _, body = await call(
         app, "POST", "/api/auth/setup", {"setup_code": code, "password": "short"}
     )
-    assert status == 400 and "12" in body["detail"]
+    assert status == 400
+    assert "12" in body["detail"]
 
     status, headers, _ = await call(
         app, "POST", "/api/auth/setup", {"setup_code": code.lower(), "password": PASSWORD}
     )
     assert status == 200
     cookie_attrs = headers["set-cookie"].lower()
-    assert "httponly" in cookie_attrs and "samesite=lax" in cookie_attrs
+    assert "httponly" in cookie_attrs
+    assert "samesite=lax" in cookie_attrs
     token = session_from(headers)
     assert (await call(app, "GET", "/api/settings", cookie=token))[0] == 200
     assert not (tmp_path / "state" / "setup-code.txt").exists()
@@ -163,7 +166,8 @@ async def test_proxy_mode_trusts_header_only_from_trusted_proxy(make_app):
     # Anyone else on the LAN sending the same header is not trusted.
     assert (await call(app, "GET", "/api/settings", client=LAN, headers=as_user))[0] == 401
     _, _, body = await call(app, "GET", "/api/auth/status", client="10.0.0.5", headers=as_user)
-    assert body["authenticated"] and body["user"] == "alon"
+    assert body["authenticated"]
+    assert body["user"] == "alon"
 
 
 async def test_off_mode_and_settings_need_current_password(make_app):

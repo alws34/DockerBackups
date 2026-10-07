@@ -29,7 +29,8 @@ async def test_add_and_remove_service(tmp_path: Path):
 
     _, _, catalog = await call(app, "GET", "/api/catalog")
     by_type = {c["type"]: c for c in catalog}
-    assert by_type["n8n"]["added"] and not by_type["wikijs"]["added"]
+    assert by_type["n8n"]["added"]
+    assert not by_type["wikijs"]["added"]
     assert "Wiki.js URL" in by_type["wikijs"]["settings"]
 
     assert (await call(app, "POST", "/api/services", {"type": "wikijs"}))[0] == 200
@@ -37,7 +38,8 @@ async def test_add_and_remove_service(tmp_path: Path):
     saved = json.loads(config.read_text())["services"]
     wikijs = next(s for s in saved if s["name"] == "wikijs")
     # Workers that look settings up through options get them filled in.
-    assert wikijs["enabled"] and wikijs["options"]["wikijs_url_env"] == "WIKIJS_URL"
+    assert wikijs["enabled"]
+    assert wikijs["options"]["wikijs_url_env"] == "WIKIJS_URL"
 
     assert (await call(app, "DELETE", "/api/services/n8n"))[0] == 200
     assert (await call(app, "DELETE", "/api/services/n8n"))[0] == 404
@@ -67,7 +69,8 @@ async def test_second_instance_keeps_its_own_settings(tmp_path: Path):
     assert (await call(app, "PUT", "/api/services/adguardhome_2/label", rename))[0] == 200
     _, _, listed = await call(app, "GET", "/api/services")
     second = next(s for s in listed if s["name"] == "adguardhome_2")
-    assert second["display_name"] == "AdGuard (lab)" and second["app_name"] == "AdGuard Home"
+    assert second["display_name"] == "AdGuard (lab)"
+    assert second["app_name"] == "AdGuard Home"
     url = next(ev for ev in second["env_vars"] if ev["key"] == "ADGUARD_URL")
     assert url["value"] == "http://10.0.0.85:8081"
     _, _, catalog = await call(app, "GET", "/api/catalog")
@@ -79,7 +82,8 @@ def test_worker_of_an_instance_sees_its_own_values(tmp_path: Path):
     env = {"ADGUARD_URL": "http://first", "ADGUARD_URL__2": "http://second", "OTHER": "x"}
     second = {"name": "adguardhome_2", "type": "adguardhome", "env_suffix": "__2"}
     seen = scheduler.instance_env(second, env)
-    assert seen["ADGUARD_URL"] == "http://second" and seen["OTHER"] == "x"
+    assert seen["ADGUARD_URL"] == "http://second"
+    assert seen["OTHER"] == "x"
     assert seen["ADGUARD_USERNAME"] == ""  # never falls back to the first server's login
     first = {"name": "adguardhome", "type": "adguardhome"}
     assert scheduler.instance_env(first, env)["ADGUARD_URL"] == "http://first"

@@ -119,8 +119,10 @@ def test_older_versions_return_a_json_array_of_chats(tmp_path: Path) -> None:
 @pytest.mark.parametrize(("status", "match"), [(401, "rejected"), (403, "Enable API Keys")])
 def test_unusable_key_fails_with_hint(tmp_path: Path, status: int, match: str) -> None:
     with patch("requests.Session.request", return_value=_resp({}, status=status)):
+        worker = OpenWebUIWorker({"name": "openwebui", "type": "openwebui"})
+        ctx = _ctx(tmp_path)
         with pytest.raises(BackupError, match=match):
-            OpenWebUIWorker({"name": "openwebui", "type": "openwebui"}).run(_ctx(tmp_path))
+            worker.run(ctx)
 
 
 def test_server_error_fails_backup(tmp_path: Path) -> None:
@@ -132,5 +134,7 @@ def test_server_error_fails_backup(tmp_path: Path) -> None:
         return api(method, url, **kw)
 
     with patch("requests.Session.request", side_effect=route):
+        worker = OpenWebUIWorker({"name": "openwebui", "type": "openwebui"})
+        ctx = _ctx(tmp_path)
         with pytest.raises(BackupError, match="prompts"):
-            OpenWebUIWorker({"name": "openwebui", "type": "openwebui"}).run(_ctx(tmp_path))
+            worker.run(ctx)

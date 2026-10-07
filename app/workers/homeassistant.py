@@ -172,7 +172,7 @@ class HomeAssistantWorker(BackupWorker):
                 with archive.open("wb") as f:
                     for chunk in resp.iter_content(chunk_size=1 << 20):
                         f.write(chunk)
-        except (requests.RequestException, OSError) as e:
+        except OSError as e:  # includes requests.RequestException
             archive.unlink(missing_ok=True)
             raise BackupError(f"Downloading backup from {url} failed: {e}") from e
         archive.chmod(0o600)
@@ -193,8 +193,9 @@ def _login(ws: ClientConnection, token: str) -> Call:
     def call(msg_type: str, **params: object) -> dict:
         msg_id = next(ids)
         ws.send(json.dumps({"id": msg_id, "type": msg_type, **params}))
-        while (msg := json.loads(ws.recv(timeout=_REPLY_TIMEOUT_SECONDS))).get("id") != msg_id:
-            pass
+        msg: dict = {}
+        while msg.get("id") != msg_id:  # skip events and replies to other calls
+            msg = json.loads(ws.recv(timeout=_REPLY_TIMEOUT_SECONDS))
         if not msg.get("success"):
             err = msg.get("error") or {}
             hint = (

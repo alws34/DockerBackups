@@ -91,17 +91,17 @@ def test_rejected_key_fails_with_hint(tmp_path: Path) -> None:
     resp.raise_for_status.side_effect = requests.HTTPError("401 Client Error: Unauthorized")
     env = {"SPARKYFITNESS_URL": "http://s", "SPARKYFITNESS_API_KEY": "x"}
     with patch("requests.Session.request", return_value=resp):
+        worker = SparkyFitnessWorker({"name": "sparky", "type": "sparkyfitness"})
+        ctx = _ctx(tmp_path, env)
         with pytest.raises(BackupError, match="API key exists"):
-            SparkyFitnessWorker({"name": "sparky", "type": "sparkyfitness"}).run(
-                _ctx(tmp_path, env)
-            )
+            worker.run(ctx)
 
 
 def test_missing_key_fails(tmp_path: Path) -> None:
+    worker = SparkyFitnessWorker({"name": "sparky", "type": "sparkyfitness"})
+    ctx = _ctx(tmp_path, {"SPARKYFITNESS_URL": "http://s"})
     with pytest.raises(BackupError, match="SPARKYFITNESS_API_KEY"):
-        SparkyFitnessWorker({"name": "sparky", "type": "sparkyfitness"}).run(
-            _ctx(tmp_path, {"SPARKYFITNESS_URL": "http://s"})
-        )
+        worker.run(ctx)
 
 
 def test_scan_starts_at_the_account_creation_year():

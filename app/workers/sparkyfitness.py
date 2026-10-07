@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date, datetime
 from typing import ClassVar
 
@@ -28,6 +29,18 @@ def _first_year(user: dict) -> int:
 
 
 _PAGE_SIZE = 100
+
+
+def _exercise_sessions(get: Callable[..., dict | list]) -> list:
+    """The whole exercise history, read page by page."""
+    sessions: list = []
+    n = 1
+    while True:
+        data = get("/v2/exercise-entries/history", page=str(n), pageSize=str(_PAGE_SIZE))
+        sessions.extend(data["sessions"])
+        if not data["pagination"]["hasMore"]:
+            return sessions
+        n += 1
 
 
 class SparkyFitnessWorker(BackupWorker):
@@ -127,15 +140,7 @@ class SparkyFitnessWorker(BackupWorker):
                 "water_containers": get("/water-containers"),
             }
 
-            sessions: list = []
-            n = 1
-            while True:
-                data = get("/v2/exercise-entries/history", page=str(n), pageSize=str(_PAGE_SIZE))
-                sessions.extend(data["sessions"])
-                if not data["pagination"]["hasMore"]:
-                    break
-                n += 1
-            files["exercise_sessions"] = sessions
+            files["exercise_sessions"] = _exercise_sessions(get)
 
             categories = files["custom_measurement_categories"]
             ranged: dict[str, list] = {}

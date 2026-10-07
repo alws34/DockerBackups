@@ -106,11 +106,15 @@ def test_bad_token_says_so(tmp_path: Path) -> None:
     resp = MagicMock()
     resp.raise_for_status.side_effect = err
     with patch("requests.Session.request", return_value=resp):
+        worker = PlexWorker({"name": "plex", "type": "plex"})
+        ctx = _ctx(tmp_path)
         with pytest.raises(BackupError, match="PLEX_TOKEN"):
-            PlexWorker({"name": "plex", "type": "plex"}).run(_ctx(tmp_path))
+            worker.run(ctx)
 
 
 def test_unreachable_server_fails(tmp_path: Path) -> None:
     with patch("requests.Session.request", side_effect=requests.ConnectionError("down")):
+        worker = PlexWorker({"name": "plex", "type": "plex"})
+        ctx = _ctx(tmp_path)
         with pytest.raises(BackupError, match="failed"):
-            PlexWorker({"name": "plex", "type": "plex"}).run(_ctx(tmp_path))
+            worker.run(ctx)
