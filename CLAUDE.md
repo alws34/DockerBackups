@@ -20,7 +20,7 @@ vanilla JS GUI, Python 3.12 Alpine. Workers produce files; destinations upload t
 - The container runs as non-root (uid 1000 / `PUID`) with a read-only root filesystem and all
   capabilities dropped. The app may only write to the bind mounts (`/backups`, `/logs`,
   `/state`, `/config`, `/app-env/.env`), `/tmp` and `$HOME` (both tmpfs).
-- All tests must pass (206 at last count). Run `PYTHONPATH=. pytest tests/ -x -q` before any commit.
+- All tests must pass (207 at last count). Run `PYTHONPATH=. pytest tests/ -x -q` before any commit.
 
 ## Branches
 

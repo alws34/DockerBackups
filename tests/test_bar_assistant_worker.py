@@ -126,3 +126,24 @@ def test_unreachable_server(tmp_path: Path) -> None:
 def test_missing_setting(tmp_path: Path, missing: str) -> None:
     with pytest.raises(BackupError, match=f"{missing} is not set"):
         _worker().run(_ctx(tmp_path, {**ENV, missing: ""}))
+
+
+def test_follows_every_page(tmp_path: Path) -> None:
+    # A bar with more records than one page holds: page 2 must not be dropped.
+    def route(method: str, url: str, **kw: object) -> requests.Response:
+        endpoint = url.removeprefix("http://bar/api/")
+        if endpoint == "bars":
+            return _resp(url, {"data": BARS[:1]})
+        if endpoint != "cocktails":
+            return _resp(url, {"data": []})
+        page = kw["params"].get("page", 1)
+        return _resp(url, {"data": [{"id": page}], "meta": {"last_page": 3}})
+
+    with patch("requests.Session.request", side_effect=route):
+        result = _worker().run(_ctx(tmp_path, ENV))
+
+    assert _read(result.output_files[0])["bar_home/cocktails.json"] == [
+        {"id": 1},
+        {"id": 2},
+        {"id": 3},
+    ]
