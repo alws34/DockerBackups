@@ -292,19 +292,24 @@ tests -q`). They cover:
   security headers.
 - **Scheduler:** schedules, retention, run history, first start with an empty
   dashboard, upgrades that restore apps from `.env`, unsafe service names.
-- **Destinations:** retention only ever touches files this app made, private
-  0600 writes, the local folder, upload timeouts and isolation (one failing destination
-  never stops the others), the Google login flow, SFTP host-key pinning and key upload.
-- **Workers:** Wiki.js, n8n, Snipe-IT and Vaultwarden against mocked APIs, plus
-  the shared fetch and archive helpers.
+- **Destinations:** uploads to Google Drive, OneDrive, SFTP, SMB and a local folder
+  with their services mocked; retention only ever touches files this app made; private
+  0600 writes; upload timeouts and isolation (one failing destination never stops the
+  others); expired logins; SFTP host-key pinning and SSH keys with or without a
+  passphrase.
+- **Destinations API:** only known settings can be saved, the Google login uses PKCE,
+  the OAuth callback refuses forged or reused logins and escapes its error page.
+- **Workers:** 16 of the 21 apps against mocked APIs, plus the shared fetch and
+  archive helpers.
 - **Settings and the GUI's API:** `.env` reading and writing (including rejecting
   values that would add lines), adding and removing apps, every app and destination
   having a logo.
 
 CI adds a Docker build and smoke test on amd64 and arm64, an install of the systemd
 service, CodeQL and SonarQube Cloud. SFTP, SMB and the Docker image are also tested by
-hand against real servers before releases. Not yet covered: OneDrive, SMB and some
-workers (Bar Assistant, KitchenOwl, Linkwarden) have no automated tests.
+hand against real servers before releases. Not yet covered: AdGuard Home, Bar
+Assistant, KitchenOwl, Linkwarden and Nginx Proxy Manager have no automated tests, and
+the browser GUI is checked by hand.
 
 Dependencies are locked with hashes by [pip-tools](https://pip-tools.readthedocs.io/):
 edit `requirements.in` (or `requirements-dev.in`), then run
@@ -315,9 +320,10 @@ edit `requirements.in` (or `requirements-dev.in`), then run
 ### How this was built
 
 The architecture and design decisions are mine. Much of the implementation was
-written with an AI coding assistant, then reviewed, tested against live
-instances of every supported app, and covered by the test suite. I maintain it
-and review every PR.
+written with an AI coding assistant, then reviewed and covered by the test
+suite. Most apps are also tested against my own live instances; the ones added
+most recently are tested against their documented APIs until they are. I
+maintain it and review every PR.
 
 ## License
 
