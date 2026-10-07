@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.core.context import BackupResult
+from app.core.context import BackupError, BackupResult
 from app.core.env_manager import EnvManager
 from app.core.registry import WorkerRegistry, create_default_registry
 from app.core.scheduler import BackupScheduler
@@ -138,6 +138,25 @@ async def test_state_persisted_after_success(
     assert state_file.exists()
     data = json.loads(state_file.read_text())
     assert data["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_backup_error_is_recorded(
+    config_file: Path,
+    registry: MagicMock,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A worker's BackupError becomes a failed last result, and the service is free again."""
+    monkeypatch.setenv("BACKUP_ROOT", str(tmp_path / "backups"))
+    monkeypatch.setenv("STATE_ROOT", str(tmp_path / "state"))
+    registry.create.return_value.run.side_effect = BackupError("API key rejected")
+    scheduler = BackupScheduler(str(config_file), registry)
+    scheduler.load_config()
+    assert await scheduler.run_service({"name": "svc1", "type": "dummy"}) is None
+    assert scheduler.get_state("svc1")["message"] == "API key rejected"
+    assert scheduler.get_state("svc1")["success"] is False
+    assert scheduler.is_running("svc1") is False
 
 
 def test_is_running_default_false(config_file: Path, registry: MagicMock) -> None:
