@@ -112,7 +112,7 @@ def test_sftp_key_login_uses_key_not_password(server):
     transport, _ = server
     with patch.object(paramiko.PKey, "from_path", return_value="pkey") as from_path:
         _sftp_dest(SFTP_KEY_FILE="/state/destinations/sftp_id").check()
-    from_path.assert_called_once_with("/state/destinations/sftp_id", password="pw")
+    from_path.assert_called_once_with("/state/destinations/sftp_id")  # plain key: no passphrase
     transport.auth_publickey.assert_called_once_with("backup", "pkey")
     transport.auth_password.assert_not_called()
 
