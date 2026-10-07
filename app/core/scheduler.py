@@ -233,7 +233,7 @@ class BackupScheduler:
         """
         name = service_config["name"]
         if not _SAFE_NAME.fullmatch(name):
-            logger.error(f"Skipping service {name!r}: names may only use letters, digits, - and _")
+            logger.error("Skipping a service whose name isn't only letters, digits, - and _")
             return None
         if self._running.get(name):
             logger.warning(f"[{name}] Already running, skipping")

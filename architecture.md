@@ -123,7 +123,6 @@ without a restart.
 | GET    | `/api/services`                   | All services + last state        |
 | POST   | `/api/services/{name}/trigger`    | Manual run                       |
 | PUT    | `/api/services/{name}/enabled`    | Toggle enabled flag              |
-| GET    | `/api/logs/{service}`             | Recent log lines                 |
 | GET    | `/api/env-vars/{type}`            | Env var specs for a worker type  |
 | PUT    | `/api/env-vars/{type}`            | Write values to `.env`           |
 | GET    | `/api/destinations`               | Destination list + auth status   |
