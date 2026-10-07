@@ -99,7 +99,8 @@ async def test_list_masks_secrets(app):
     by_type = {d["type"]: d for d in listed}
     assert set(by_type) == {"google_drive", "onedrive", "sftp", "smb", "local_folder"}
     password = next(v for v in by_type["sftp"]["env_vars"] if v["key"] == "SFTP_PASSWORD")
-    assert password["configured"] and password["value"] == "***"
+    assert password["configured"]
+    assert password["value"] == "***"
     assert "hunter2" not in json.dumps(listed)
     assert by_type["google_drive"]["credentials_uploaded"] is False
 
@@ -116,9 +117,11 @@ async def test_update_settings_validates_type_keys_and_values(app, env: Path):
     assert (env / ".env").read_text() == before
 
     status, _, body = await call(app, "PUT", "/api/destinations/local_folder/env-vars", good)
-    assert status == 200 and sorted(body["updated_keys"]) == sorted(good["updates"])
+    assert status == 200
+    assert sorted(body["updated_keys"]) == sorted(good["updates"])
     saved = (env / ".env").read_text()
-    assert 'LOCAL_FOLDER_PATH="/backups/out"' in saved and 'LOCAL_FOLDER_ENABLED="true"' in saved
+    assert 'LOCAL_FOLDER_PATH="/backups/out"' in saved
+    assert 'LOCAL_FOLDER_ENABLED="true"' in saved
 
 
 # ── connection test ──────────────────────────────────────────────────────────
@@ -128,7 +131,8 @@ async def test_connection_test_reports_success_and_errors(app, env: Path):
     assert (await call(app, "POST", "/api/destinations/nope/test"))[0] == 404
 
     _, _, body = await call(app, "POST", "/api/destinations/local_folder/test")
-    assert body["ok"] is False and "not set" in body["message"]
+    assert body["ok"] is False
+    assert "not set" in body["message"]
 
     await call(
         app,
@@ -137,7 +141,8 @@ async def test_connection_test_reports_success_and_errors(app, env: Path):
         {"updates": {"LOCAL_FOLDER_PATH": str(env / "out")}},
     )
     _, _, body = await call(app, "POST", "/api/destinations/local_folder/test")
-    assert body["ok"] is True and body["message"].startswith("Writable")
+    assert body["ok"] is True
+    assert body["message"].startswith("Writable")
 
 
 async def test_connection_test_offers_host_key_and_closes(app):
@@ -164,7 +169,8 @@ async def test_connection_test_times_out(app):
         patch.object(routes, "_TEST_TIMEOUT_SECONDS", 0.05),
     ):
         _, _, body = await call(app, "POST", "/api/destinations/local_folder/test")
-    assert body["ok"] is False and "No answer" in body["message"]
+    assert body["ok"] is False
+    assert "No answer" in body["message"]
 
 
 # ── device-code logins ───────────────────────────────────────────────────────
@@ -178,7 +184,8 @@ async def test_device_login_start_and_poll(app):
     login = DeviceLogin("WDJB-MJHT", "https://www.google.com/device", 1800, lambda: "me@x.com")
     with patch.object(GoogleDriveDestination, "start_login", return_value=login):
         status, _, body = await call(app, "POST", "/api/destinations/google_drive/login")
-    assert status == 200 and body["user_code"] == "WDJB-MJHT"
+    assert status == 200
+    assert body["user_code"] == "WDJB-MJHT"
     await _finish_logins()
     _, _, progress = await call(app, "GET", f"/api/destinations/logins/{body['id']}")
     assert progress == {"status": "connected", "message": "me@x.com"}
@@ -195,10 +202,12 @@ async def test_device_login_failure_and_unsupported(app):
         _, _, body = await call(app, "POST", "/api/destinations/google_drive/login")
     await _finish_logins()
     _, _, progress = await call(app, "GET", f"/api/destinations/logins/{body['id']}")
-    assert progress["status"] == "failed" and "denied" in progress["message"]
+    assert progress["status"] == "failed"
+    assert "denied" in progress["message"]
 
     status, _, body = await call(app, "POST", "/api/destinations/sftp/login")
-    assert status == 400 and "does not use a login" in body["detail"]
+    assert status == 400
+    assert "does not use a login" in body["detail"]
     assert (await call(app, "DELETE", "/api/destinations/sftp/login"))[0] == 400
 
 
@@ -216,7 +225,8 @@ async def test_disconnect_google_revokes_and_deletes(app, env: Path):
     tokens.write_text(json.dumps({"refresh_token": "rt", "account": "me@x.com"}))
     with patch("app.destinations.google_drive.requests.post") as post:
         status, _, _ = await call(app, "DELETE", "/api/destinations/google_drive/login")
-    assert status == 200 and not tokens.exists()
+    assert status == 200
+    assert not tokens.exists()
     assert post.call_args.kwargs["data"] == {"token": "rt"}
 
 
@@ -239,7 +249,8 @@ def _openssh_key(passphrase: bytes | None = None) -> str:
 async def test_sftp_key_upload(app, env: Path):
     (env / ".env").write_text("")
     status, _, _ = await call(app, "POST", "/api/destinations/sftp/key", {"key": "not a key"})
-    assert status == 400 and "SFTP_KEY_FILE" not in (env / ".env").read_text()
+    assert status == 400
+    assert "SFTP_KEY_FILE" not in (env / ".env").read_text()
 
     pem = _openssh_key()
     status, _, body = await call(app, "POST", "/api/destinations/sftp/key", {"key": pem})
@@ -283,15 +294,19 @@ async def test_client_secret_upload_validation(app, env: Path):
     assert (await _upload(app, "{not json"))[0] == 400
     service_account = {"type": "service_account", "client_email": "x@y.iam.gserviceaccount.com"}
     status, body = await _upload(app, json.dumps(service_account))
-    assert status == 400 and "service account" in body["detail"]
+    assert status == 400
+    assert "service account" in body["detail"]
     status, body = await _upload(app, json.dumps({"web": {"client_id": "x"}}))
-    assert status == 400 and "client_secret" in body["detail"]
+    assert status == 400
+    assert "client_secret" in body["detail"]
     assert not creds.exists()
 
     creds.mkdir()  # a Docker bind mount of a missing file creates a directory
     status, body = await _upload(app, json.dumps(CLIENT_SECRET))
-    assert status == 200 and body["client_id"] == CLIENT_SECRET["installed"]["client_id"]
-    assert creds.is_file() and stat.S_IMODE(creds.stat().st_mode) == 0o600
+    assert status == 200
+    assert body["client_id"] == CLIENT_SECRET["installed"]["client_id"]
+    assert creds.is_file()
+    assert stat.S_IMODE(creds.stat().st_mode) == 0o600
     _, _, listed = await call(app, "GET", "/api/destinations")
     assert next(d for d in listed if d["type"] == "google_drive")["credentials_uploaded"]
 
@@ -300,14 +315,16 @@ async def test_oauth_start_uses_pkce(app):
     path = "/api/destinations/google_drive/oauth/start"
     base = {"redirect_base": f"http://{LAN}:9100/"}
     status, _, body = await call(app, "POST", path, base)
-    assert status == 400 and "client_secret.json" in body["detail"]
+    assert status == 400
+    assert "client_secret.json" in body["detail"]
 
     await _upload(app, json.dumps(CLIENT_SECRET))
     assert (await call(app, "POST", path, {}))[0] == 400
     status, _, body = await call(app, "POST", path, base)
     assert status == 200
     query = parse_qs(urlparse(body["auth_url"]).query)
-    assert query["code_challenge_method"] == ["S256"] and query["access_type"] == ["offline"]
+    assert query["code_challenge_method"] == ["S256"]
+    assert query["access_type"] == ["offline"]
     assert query["scope"] == ["https://www.googleapis.com/auth/drive.file"]
     callback = f"http://{LAN}:9100/api/destinations/google_drive/oauth/callback"
     assert query["redirect_uri"] == [callback]
@@ -322,7 +339,8 @@ CALLBACK = "/api/destinations/google_drive/oauth/callback"
 
 async def test_oauth_callback_rejects_unknown_state(app, env: Path):
     status, page = await get_html(app, CALLBACK, {"code": "c", "state": "forged"})
-    assert status == 400 and "unknown or expired" in page
+    assert status == 400
+    assert "unknown or expired" in page
     assert not (env / "google-tokens.json").exists()
 
 
@@ -333,7 +351,8 @@ async def test_oauth_callback_escapes_errors(app):
     with patch("google_auth_oauthlib.flow.Flow.from_client_secrets_file", return_value=flow):
         status, page = await get_html(app, CALLBACK, {"code": "c", "state": "s1"})
     assert status == 500
-    assert "<script>" not in page and "&lt;script&gt;" in page
+    assert "<script>" not in page
+    assert "&lt;script&gt;" in page
 
 
 async def test_oauth_callback_stores_tokens_once(app, env: Path):
@@ -348,7 +367,8 @@ async def test_oauth_callback_stores_tokens_once(app, env: Path):
         patch("app.destinations.google_drive._account_email", return_value="me@x.com"),
     ):
         status, page = await get_html(app, CALLBACK, {"code": "abc", "state": "s2"})
-        assert status == 200 and "connected" in page
+        assert status == 200
+        assert "connected" in page
         flow.fetch_token.assert_called_once_with(code="abc", code_verifier="ver")
         # The state is single-use: replaying the callback is refused.
         assert (await get_html(app, CALLBACK, {"code": "abc", "state": "s2"}))[0] == 400

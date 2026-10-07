@@ -99,13 +99,15 @@ def test_sftp_list_and_remove(server):
 def test_sftp_login_and_connection_failures_close_the_transport(server):
     transport, _ = server
     transport.auth_password.side_effect = paramiko.AuthenticationException()
+    dest = _sftp_dest()
     with pytest.raises(BackupError, match="login to nas.lan as backup failed"):
-        _sftp_dest().check()
+        dest.check()
     transport.close.assert_called_once()
 
+    dest = _sftp_dest()
     with patch.object(paramiko, "Transport", side_effect=OSError("refused")):
         with pytest.raises(BackupError, match="connection to nas.lan:22 failed: refused"):
-            _sftp_dest().check()
+            dest.check()
 
 
 def test_sftp_key_login_uses_key_not_password(server):
@@ -177,8 +179,9 @@ def test_smb_put_writes_partial_then_replaces(smbclient, tmp_path: Path):
 
 def test_smb_mkdir_errors_other_than_exists_propagate(smbclient):
     smbclient.mkdir.side_effect = OSError(errno.EACCES, "denied")
+    dest = _smb_dest()
     with pytest.raises(OSError, match="denied"):
-        _smb_dest().check()
+        dest.check()
 
 
 def test_smb_list_and_remove(smbclient):
@@ -194,18 +197,22 @@ def test_smb_list_and_remove(smbclient):
 
 def test_smb_connection_errors(smbclient):
     smbclient.register_session.side_effect = SMBAuthenticationError("bad")
+    dest = _smb_dest()
     with pytest.raises(BackupError, match="login to nas as u failed"):
-        _smb_dest().check()
+        dest.check()
     smbclient.register_session.side_effect = SMBException("STATUS_LOGON_FAILURE")
+    dest = _smb_dest()
     with pytest.raises(BackupError, match="wrong user or password"):
-        _smb_dest().check()
+        dest.check()
     smbclient.register_session.side_effect = OSError("timed out")
+    dest = _smb_dest()
     with pytest.raises(BackupError, match="connection to nas:445 failed"):
-        _smb_dest().check()
+        dest.check()
     smbclient.register_session.side_effect = None
     smbclient.listdir.side_effect = OSError("no share")
+    dest = _smb_dest()
     with pytest.raises(BackupError, match="not found or not accessible"):
-        _smb_dest().check()
+        dest.check()
 
 
 def test_smb_settings():

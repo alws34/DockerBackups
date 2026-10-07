@@ -12,8 +12,9 @@ from app.core.env_manager import EnvManager
 from app.core.registry import WorkerRegistry
 from app.core.scheduler import BackupScheduler
 
-_NOT_FOUND = {404: {"description": "Service not found"}}
-_BUSY = {409: {"description": "A backup of the service is running"}}
+# Sonar (S8415) only reads literal status-code keys in `responses=`, not `**` merges.
+_NOT_FOUND = {"description": "Service not found"}
+_BUSY = {"description": "A backup of the service is running"}
 
 
 class EnabledUpdate(BaseModel):
@@ -118,7 +119,7 @@ def create_router(
 
     @router.put(
         "/services/{name}/env-vars",
-        responses={**_NOT_FOUND, 400: {"description": "Invalid settings"}},
+        responses={404: _NOT_FOUND, 400: {"description": "Invalid settings"}},
     )
     async def update_service_env_vars(name: str, body: ServiceEnvUpdate) -> dict:
         """Save one service's settings; extra instances store them under KEY__<n>."""
@@ -136,14 +137,14 @@ def create_router(
             raise HTTPException(status_code=400, detail=str(e)) from e
         return {"status": "saved", "updated_keys": list(body.updates)}
 
-    @router.put("/services/{name}/label", responses=_NOT_FOUND)
+    @router.put("/services/{name}/label", responses={404: _NOT_FOUND})
     async def rename_service(name: str, body: ServiceLabel) -> dict:
         """Rename a service as shown on the dashboard."""
         find(name)
         scheduler.set_label(name, body.label)
         return {"status": "saved"}
 
-    @router.delete("/services/{name}", responses={**_NOT_FOUND, **_BUSY})
+    @router.delete("/services/{name}", responses={404: _NOT_FOUND, 409: _BUSY})
     async def remove_service(name: str) -> dict:
         """Take an app off the dashboard; its .env settings and backups are kept."""
         if scheduler.is_running(name):
@@ -154,7 +155,7 @@ def create_router(
             raise HTTPException(status_code=404, detail=f"Service '{name}' not found") from e
         return {"status": "removed", "service": name}
 
-    @router.post("/services/{name}/trigger", responses={**_NOT_FOUND, **_BUSY})
+    @router.post("/services/{name}/trigger", responses={404: _NOT_FOUND, 409: _BUSY})
     async def trigger_service(name: str, background_tasks: BackgroundTasks) -> dict:
         """Schedule a single named service to run in the background."""
         config = scheduler.get_config()
@@ -185,7 +186,7 @@ def create_router(
 
     @router.put(
         "/services/{name}/enabled",
-        responses={**_NOT_FOUND, 500: {"description": "Could not save the config"}},
+        responses={404: _NOT_FOUND, 500: {"description": "Could not save the config"}},
     )
     async def set_service_enabled(name: str, body: EnabledUpdate) -> dict:
         """Enable or disable a service and persist the change to config."""
